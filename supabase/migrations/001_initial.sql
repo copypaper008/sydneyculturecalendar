@@ -1,8 +1,19 @@
+-- Event type enum
+create type event_type as enum (
+  'exhibition',
+  'festival',
+  'talk',
+  'performance',
+  'open_day',
+  'heritage',
+  'other'
+);
+
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   institution text not null,
-  event_type text not null,  -- 'exhibition' | 'festival' | 'talk' | 'performance' | 'open_day' | 'heritage' | 'other'
+  event_type event_type not null,
   start_date date not null,
   end_date date,
   start_time time,
@@ -13,20 +24,35 @@ create table if not exists events (
   image_url text,
   event_url text,
   ticket_url text,
-  is_free boolean default false,
-  tags text[],
-  created_at timestamptz default now()
+  is_free boolean not null default false,
+  tags text[] not null default '{}',
+  search_vector tsvector generated always as (
+    to_tsvector('english',
+      coalesce(title, '') || ' ' ||
+      coalesce(institution, '') || ' ' ||
+      coalesce(venue, '') || ' ' ||
+      coalesce(suburb, '') || ' ' ||
+      coalesce(description, '') || ' ' ||
+      coalesce(array_to_string(tags, ' '), '')
+    )
+  ) stored,
+  created_at timestamptz not null default now(),
+  constraint end_date_after_start check (end_date is null or end_date >= start_date),
+  constraint end_time_after_start check (end_time is null or start_time is null or end_time > start_time)
 );
 
--- Row Level Security (allow public read access)
+-- Row Level Security (public read, no anonymous writes)
 alter table events enable row level security;
 
 create policy "Allow public read access"
   on events for select
   using (true);
 
--- Indexes for common queries
-create index if not exists events_start_date_idx on events (start_date);
-create index if not exists events_institution_idx on events (institution);
-create index if not exists events_event_type_idx on events (event_type);
-create index if not exists events_is_free_idx on events (is_free);
+-- Indexes
+create index events_start_date_idx on events (start_date);
+create index events_end_date_idx on events (end_date);
+create index events_institution_idx on events (institution);
+create index events_event_type_idx on events (event_type);
+create index events_is_free_idx on events (is_free);
+create index events_suburb_idx on events (suburb);
+create index events_search_idx on events using gin (search_vector);
