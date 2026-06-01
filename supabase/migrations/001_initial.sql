@@ -26,16 +26,7 @@ create table if not exists events (
   ticket_url text,
   is_free boolean not null default false,
   tags text[] not null default '{}',
-  search_vector tsvector generated always as (
-    to_tsvector('english',
-      coalesce(title, '') || ' ' ||
-      coalesce(institution, '') || ' ' ||
-      coalesce(venue, '') || ' ' ||
-      coalesce(suburb, '') || ' ' ||
-      coalesce(description, '') || ' ' ||
-      coalesce(array_to_string(tags, ' '), '')
-    )
-  ) stored,
+  search_vector tsvector,
   created_at timestamptz not null default now(),
   constraint end_date_after_start check (end_date is null or end_date >= start_date),
   constraint end_time_after_start check (end_time is null or start_time is null or end_time > start_time)
@@ -56,3 +47,23 @@ create index events_event_type_idx on events (event_type);
 create index events_is_free_idx on events (is_free);
 create index events_suburb_idx on events (suburb);
 create index events_search_idx on events using gin (search_vector);
+
+-- Trigger to keep search_vector up to date
+create or replace function events_search_vector_update() returns trigger as $$
+begin
+  new.search_vector :=
+    to_tsvector('english',
+      coalesce(new.title, '') || ' ' ||
+      coalesce(new.institution, '') || ' ' ||
+      coalesce(new.venue, '') || ' ' ||
+      coalesce(new.suburb, '') || ' ' ||
+      coalesce(new.description, '') || ' ' ||
+      coalesce(array_to_string(new.tags, ' '), '')
+    );
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger events_search_vector_trigger
+  before insert or update on events
+  for each row execute function events_search_vector_update();
