@@ -24,6 +24,8 @@ export interface Event {
   ticket_url?: string;
   is_free: boolean;
   tags?: string[];
+  source?: string;
+  source_id?: string;
   created_at?: string;
 }
 
