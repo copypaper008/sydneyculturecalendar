@@ -21,7 +21,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const event = await getEventById(id);
+  const [event, allEvents] = await Promise.all([getEventById(id), getEvents()]);
   if (!event) notFound();
-  return <EventDetail event={event} />;
+
+  const related = allEvents
+    .filter((e) => e.id !== event.id && e.event_type === event.event_type)
+    .slice(0, 3);
+
+  return <EventDetail event={event} relatedEvents={related} />;
 }

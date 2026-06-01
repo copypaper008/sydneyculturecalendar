@@ -37,14 +37,17 @@ export default function EventList({ events }: { events: Event[] }) {
   }, [events, filters]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-7">
       <FilterBar filters={filters} onChange={setFilters} />
-      <p className="text-sm text-gray-500">
-        Showing <span className="font-semibold text-gray-700">{filtered.length}</span> event{filtered.length !== 1 ? 's' : ''}
+
+      <p className="text-sm text-stone-500">
+        <span className="font-semibold text-teal-700">{filtered.length}</span>{' '}
+        event{filtered.length !== 1 ? 's' : ''} found
       </p>
+
       {filtered.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-lg font-medium">No events found</p>
+        <div className="text-center py-24 text-stone-400">
+          <p className="text-lg font-medium" style={{ fontFamily: 'var(--font-serif)' }}>No events found</p>
           <p className="text-sm mt-1">Try adjusting your filters</p>
         </div>
       ) : (
