@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchSLNSWEvents } from '@/lib/sync/sources/slnsw'
+import { fetchMCAEvents } from '@/lib/sync/sources/mca'
 import { syncEvents } from '@/lib/sync/engine'
 
 function isAuthorized(request: NextRequest): boolean {
@@ -12,8 +13,11 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 async function runSync() {
-  const rawEvents = await fetchSLNSWEvents()
-  const result = await syncEvents(rawEvents)
+  const [slnswEvents, mcaEvents] = await Promise.all([
+    fetchSLNSWEvents(),
+    fetchMCAEvents(),
+  ])
+  const result = await syncEvents([...slnswEvents, ...mcaEvents])
   return result
 }
 
