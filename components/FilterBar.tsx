@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { EVENT_TYPES } from '@/lib/types';
+import { EVENT_TYPES, INSTITUTIONS } from '@/lib/types';
 
 export interface Filters {
   search: string;
@@ -25,12 +25,25 @@ const POPULAR = [
   { label: 'Performances', key: 'eventType', value: 'performance' },
 ];
 
+const selectStyle: React.CSSProperties = {
+  height: '38px',
+  padding: '0 var(--space-2)',
+  border: '1px solid var(--colour-line)',
+  borderRadius: 'var(--radius-sm)',
+  fontSize: '.85rem',
+  color: 'var(--colour-ink)',
+  background: 'white',
+  fontFamily: 'var(--font-body)',
+  cursor: 'pointer',
+};
+
 export default function FilterBar({ filters, onChange }: FilterBarProps) {
   const set = (key: keyof Filters, value: string) =>
     onChange({ ...filters, [key]: value });
 
   const hasActive =
     filters.search ||
+    filters.institution !== 'all' ||
     filters.eventType !== 'all' ||
     filters.isFree !== 'all' ||
     filters.dateFrom ||
@@ -62,7 +75,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
         }}
       />
 
-      {/* Popular filters */}
+      {/* Popular quick-filters */}
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: '.8rem', color: 'var(--colour-muted)', fontWeight: 600, marginRight: 'var(--space-1)' }}>
           Popular:
@@ -91,6 +104,41 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             </button>
           );
         })}
+      </div>
+
+      {/* Dropdown row */}
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select
+          value={filters.eventType}
+          onChange={(e) => set('eventType', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="all">All event types</option>
+          {EVENT_TYPES.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+
+        <select
+          value={filters.institution}
+          onChange={(e) => set('institution', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="all">All institutions</option>
+          {INSTITUTIONS.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+
+        <select
+          value={filters.isFree}
+          onChange={(e) => set('isFree', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="all">Free &amp; ticketed</option>
+          <option value="free">Free only</option>
+          <option value="paid">Ticketed only</option>
+        </select>
 
         {/* Date range */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginLeft: 'auto' }}>
@@ -98,22 +146,14 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             type="date"
             value={filters.dateFrom}
             onChange={(e) => set('dateFrom', e.target.value)}
-            style={{
-              padding: '0 var(--space-2)', height: '38px', border: '1px solid var(--colour-line)',
-              borderRadius: 'var(--radius-sm)', fontSize: '.8rem', color: 'var(--colour-ink)',
-              background: 'white', fontFamily: 'var(--font-body)',
-            }}
+            style={selectStyle}
           />
           <span style={{ fontSize: '.8rem', color: 'var(--colour-muted)' }}>to</span>
           <input
             type="date"
             value={filters.dateTo}
             onChange={(e) => set('dateTo', e.target.value)}
-            style={{
-              padding: '0 var(--space-2)', height: '38px', border: '1px solid var(--colour-line)',
-              borderRadius: 'var(--radius-sm)', fontSize: '.8rem', color: 'var(--colour-ink)',
-              background: 'white', fontFamily: 'var(--font-body)',
-            }}
+            style={selectStyle}
           />
         </div>
       </div>
