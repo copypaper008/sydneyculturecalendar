@@ -59,3 +59,99 @@ h1, h2 {
   font-family: var(--font-display);
   letter-spacing: -.03em;
 }
+
+/* Responsive layout utilities */
+.nav-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 280px;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.discovery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.cards-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.cards-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--space-7);
+  align-items: start;
+}
+
+.calendar-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.calendar-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.chip-group {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 860px) {
+  .nav-grid {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+  }
+  .nav-grid .nav-search {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .discovery-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cards-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cards-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 540px) {
+  .discovery-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cards-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-header-row {
+    flex-direction: column;
+  }
+}

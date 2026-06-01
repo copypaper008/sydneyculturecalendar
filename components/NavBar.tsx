@@ -20,15 +20,11 @@ export default function NavBar() {
   }
 
   return (
-    <header style={{
+    <header className="nav-grid" style={{
       position: 'sticky',
       top: 0,
       zIndex: 10,
-      display: 'grid',
-      gridTemplateColumns: '1fr auto 280px',
-      gap: 'var(--space-5)',
-      alignItems: 'center',
-      padding: `var(--space-3) max(24px, calc((100vw - var(--max-width)) / 2 + var(--space-4)))`,
+      padding: `var(--space-3) max(16px, calc((100vw - var(--max-width)) / 2 + var(--space-4)))`,
       background: 'rgb(255 253 248 / 92%)',
       borderBottom: '1px solid var(--colour-line)',
       backdropFilter: 'blur(14px)',
@@ -58,7 +54,7 @@ export default function NavBar() {
         })}
       </nav>
 
-      <form onSubmit={handleSearch}>
+      <form onSubmit={handleSearch} className="nav-search">
         <input
           type="text"
           value={query}

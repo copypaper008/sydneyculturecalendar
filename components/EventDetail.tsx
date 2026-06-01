@@ -55,7 +55,7 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
       </div>
 
       {/* Two-column: left = info, right = metadata */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 'var(--space-7)', alignItems: 'start' }}>
+      <div className="detail-grid">
 
         {/* Left */}
         <div>
@@ -148,7 +148,7 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: 'var(--space-4)', color: 'var(--colour-ink)' }}>
             You may also like
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+          <div className="cards-3">
             {relatedEvents.slice(0, 3).map(e => (
               <EventCard key={e.id} event={e} />
             ))}
