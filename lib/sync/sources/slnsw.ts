@@ -80,6 +80,7 @@ function parseTime(raw: string): string | null {
 interface EventDetails {
   title: string
   description: string
+  image_url: string | null
   start_date: string | null
   end_date: string | null
   start_time: string | null
@@ -107,11 +108,19 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
     }
     if (!title) return null
 
-    // Description: og:description or first <p> in main content
+    // Description: og:description
     let description = ''
     const ogDesc = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
     if (ogDesc) {
       description = decodeEntities(ogDesc[1])
+    }
+
+    // Image: og:image
+    let image_url: string | null = null
+    const ogImage = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
+    if (ogImage) {
+      const raw = ogImage[1]
+      image_url = raw.startsWith('http') ? raw : `${BASE_URL}${raw}`
     }
 
     // Date ranges — look for patterns like "14 June – 20 July 2025" or "14–20 June 2025"
@@ -165,7 +174,7 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
     let venue: string | null = 'State Library of NSW'
     if (isOnline) venue = null // caller will skip online events
 
-    return { title, description, start_date, end_date, start_time, end_time, venue, is_online: isOnline }
+    return { title, description, image_url, start_date, end_date, start_time, end_time, venue, is_online: isOnline }
   } catch (err) {
     console.error(`[slnsw] Error fetching event page ${path}:`, err)
     return null
@@ -218,6 +227,7 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
       venue: details.venue ?? 'State Library of NSW',
       suburb: 'Sydney CBD',
       description: details.description || undefined,
+      image_url: details.image_url ?? undefined,
       event_url: `${BASE_URL}${path}`,
       is_free: true,
       tags: ['state-library', 'free'],

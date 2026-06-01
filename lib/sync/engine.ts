@@ -72,6 +72,7 @@ export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
           start_time: payload.start_time,
           end_time: payload.end_time,
           venue: payload.venue,
+          image_url: payload.image_url,
           is_free: payload.is_free,
           tags: payload.tags,
         })
