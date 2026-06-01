@@ -5,31 +5,8 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Event, EVENT_TYPES } from '@/lib/types';
 
-const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-const TYPE_COLOURS: Record<string, string> = {
-  exhibition: 'bg-violet-500',
-  festival: 'bg-orange-500',
-  talk: 'bg-sky-500',
-  performance: 'bg-pink-500',
-  open_day: 'bg-green-500',
-  heritage: 'bg-amber-500',
-  other: 'bg-stone-400',
-};
-
-const TYPE_CHIP_COLOURS: Record<string, string> = {
-  exhibition: 'bg-violet-100 text-violet-800 border-violet-200',
-  festival: 'bg-orange-100 text-orange-800 border-orange-200',
-  talk: 'bg-sky-100 text-sky-800 border-sky-200',
-  performance: 'bg-pink-100 text-pink-800 border-pink-200',
-  open_day: 'bg-green-100 text-green-800 border-green-200',
-  heritage: 'bg-amber-100 text-amber-800 border-amber-200',
-  other: 'bg-stone-100 text-stone-700 border-stone-200',
-};
 
 function isoDate(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -49,27 +26,15 @@ export default function CalendarView({ events }: { events: Event[] }) {
 
   const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11); }
-    else setMonth(m => m - 1);
-    setSelectedDay(null);
-  };
-  const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0); }
-    else setMonth(m => m + 1);
-    setSelectedDay(null);
-  };
-  const goToday = () => {
-    setYear(today.getFullYear());
-    setMonth(today.getMonth());
-    setSelectedDay(null);
-  };
+  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); setSelectedDay(null); };
+  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); setSelectedDay(null); };
+  const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(null); };
 
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const filteredEvents = useMemo(
-    () => (typeFilter === 'all' ? events : events.filter((e) => e.event_type === typeFilter)),
+    () => typeFilter === 'all' ? events : events.filter(e => e.event_type === typeFilter),
     [events, typeFilter],
   );
 
@@ -77,7 +42,7 @@ export default function CalendarView({ events }: { events: Event[] }) {
     const map: Record<string, Event[]> = {};
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = isoDate(year, month, d);
-      map[ds] = filteredEvents.filter((e) => eventActiveOn(e, ds));
+      map[ds] = filteredEvents.filter(e => eventActiveOn(e, ds));
     }
     return map;
   }, [filteredEvents, year, month, daysInMonth]);
@@ -85,152 +50,175 @@ export default function CalendarView({ events }: { events: Event[] }) {
   const selectedEvents = selectedDay ? (eventsByDate[selectedDay] ?? []) : [];
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Month navigation + Today button */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={goToday}
-          className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:border-teal-400 transition-all"
-        >
-          Today
-        </button>
-        <div className="flex items-center gap-1 ml-auto">
-          <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-stone-100 transition-colors">
-            <ChevronLeft className="w-5 h-5 text-stone-600" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <button onClick={goToday} style={{
+            minHeight: '38px', padding: '0 var(--space-3)',
+            background: 'white', border: '1px solid var(--colour-line)',
+            borderRadius: '999px', fontSize: '.88rem', fontWeight: 700,
+            color: 'var(--colour-ink)', cursor: 'pointer', fontFamily: 'var(--font-body)',
+          }}>
+            Today
           </button>
-          <h2
-            className="text-xl font-bold text-stone-900 min-w-[160px] text-center"
-            style={{ fontFamily: 'var(--font-serif)' }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: 'var(--colour-muted)' }}>
+              <ChevronLeft size={20} />
+            </button>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', minWidth: '200px', textAlign: 'center', color: 'var(--colour-ink)' }}>
+              {MONTHS[month]} {year}
+            </h2>
+            <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: 'var(--colour-muted)' }}>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Type filter */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setTypeFilter('all')}
+            style={{
+              minHeight: '34px', padding: '0 var(--space-3)',
+              background: typeFilter === 'all' ? 'var(--colour-primary)' : 'white',
+              border: `1px solid ${typeFilter === 'all' ? 'var(--colour-primary)' : 'var(--colour-line)'}`,
+              borderRadius: '999px', fontSize: '.82rem', fontWeight: 700,
+              color: typeFilter === 'all' ? 'white' : 'var(--colour-ink)',
+              cursor: 'pointer', fontFamily: 'var(--font-body)',
+            }}
           >
-            {MONTHS[month]} {year}
-          </h2>
-          <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-stone-100 transition-colors">
-            <ChevronRight className="w-5 h-5 text-stone-600" />
+            All
           </button>
+          {EVENT_TYPES.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setTypeFilter(typeFilter === value ? 'all' : value)}
+              style={{
+                minHeight: '34px', padding: '0 var(--space-3)',
+                background: typeFilter === value ? 'var(--colour-primary)' : 'white',
+                border: `1px solid ${typeFilter === value ? 'var(--colour-primary)' : 'var(--colour-line)'}`,
+                borderRadius: '999px', fontSize: '.82rem', fontWeight: 700,
+                color: typeFilter === value ? 'white' : 'var(--colour-ink)',
+                cursor: 'pointer', fontFamily: 'var(--font-body)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Event type filter chips */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setTypeFilter('all')}
-          className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
-            typeFilter === 'all'
-              ? 'bg-teal-600 text-white border-teal-600'
-              : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300'
-          }`}
-        >
-          All types
-        </button>
-        {EVENT_TYPES.map(({ value, label }) => {
-          const active = typeFilter === value;
+      {/* Calendar grid */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+        overflow: 'hidden', background: 'var(--colour-surface)',
+        border: '1px solid var(--colour-line)', borderRadius: 'var(--radius-md)',
+        boxShadow: 'var(--shadow-card)',
+      }}>
+        {/* Day headers */}
+        {DAYS.map(d => (
+          <div key={d} style={{
+            padding: 'var(--space-2)', textAlign: 'center',
+            fontSize: '.75rem', fontWeight: 700, letterSpacing: '.04em',
+            textTransform: 'uppercase', color: 'var(--colour-muted)',
+            borderBottom: '1px solid var(--colour-line)',
+          }}>
+            {d}
+          </div>
+        ))}
+
+        {/* Empty cells */}
+        {Array.from({ length: firstDow }).map((_, i) => (
+          <div key={`empty-${i}`} style={{
+            minHeight: '132px', padding: 'var(--space-3)',
+            borderRight: '1px solid var(--colour-line)',
+            borderBottom: '1px solid var(--colour-line)',
+            background: 'var(--colour-surface-soft)',
+          }} />
+        ))}
+
+        {/* Day cells */}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const ds = isoDate(year, month, day);
+          const dayEvents = eventsByDate[ds] ?? [];
+          const isToday = ds === todayStr;
+          const isSelected = ds === selectedDay;
+
           return (
             <button
-              key={value}
-              onClick={() => setTypeFilter(active ? 'all' : value)}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                active ? 'bg-teal-600 text-white border-teal-600' : `${TYPE_CHIP_COLOURS[value]} hover:opacity-80`
-              }`}
+              key={ds}
+              onClick={() => setSelectedDay(isSelected ? null : ds)}
+              style={{
+                minHeight: '132px', padding: 'var(--space-3)',
+                borderRight: '1px solid var(--colour-line)',
+                borderBottom: '1px solid var(--colour-line)',
+                background: isSelected ? 'var(--colour-primary-soft)' : 'var(--colour-surface)',
+                cursor: dayEvents.length > 0 ? 'pointer' : 'default',
+                textAlign: 'left', display: 'flex', flexDirection: 'column',
+                gap: '4px', fontFamily: 'var(--font-body)',
+                border: isSelected ? `1px solid var(--colour-primary)` : undefined,
+              }}
             >
-              {!active && (
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${TYPE_COLOURS[value]}`} />
+              <strong style={{
+                display: 'inline-flex', width: '28px', height: '28px',
+                alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%', fontSize: '.9rem',
+                background: isToday ? 'var(--colour-primary)' : 'transparent',
+                color: isToday ? 'white' : 'var(--colour-ink)',
+                flexShrink: 0,
+              }}>
+                {day}
+              </strong>
+              {dayEvents.slice(0, 3).map(e => (
+                <span key={e.id} style={{
+                  fontSize: '.72rem', color: 'var(--colour-muted)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}>
+                  {e.title}
+                </span>
+              ))}
+              {dayEvents.length > 3 && (
+                <span style={{ fontSize: '.72rem', color: 'var(--colour-primary-dark)', fontWeight: 700 }}>
+                  +{dayEvents.length - 3} more
+                </span>
               )}
-              {label}
             </button>
           );
         })}
       </div>
 
-      {/* Calendar grid */}
-      <div className="border border-stone-200 rounded-2xl overflow-hidden bg-white" style={{ boxShadow: 'var(--shadow-card)' }}>
-        {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-stone-200">
-          {DAYS.map((d) => (
-            <div key={d} className="py-2 text-center text-xs font-semibold text-stone-500 uppercase tracking-wide">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* Cells */}
-        <div className="grid grid-cols-7">
-          {Array.from({ length: firstDow }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[88px] border-b border-r border-stone-100 bg-stone-50/50" />
-          ))}
-
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const ds = isoDate(year, month, day);
-            const dayEvents = eventsByDate[ds] ?? [];
-            const isToday = ds === todayStr;
-            const isSelected = ds === selectedDay;
-
-            return (
-              <button
-                key={ds}
-                onClick={() => setSelectedDay(isSelected ? null : ds)}
-                className={`min-h-[88px] border-b border-r border-stone-100 p-2 flex flex-col items-start text-left transition-colors ${
-                  isSelected
-                    ? 'bg-teal-50'
-                    : dayEvents.length > 0
-                    ? 'hover:bg-stone-50 cursor-pointer'
-                    : 'cursor-default'
-                }`}
-              >
-                <span
-                  className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-1 ${
-                    isToday
-                      ? 'bg-teal-600 text-white'
-                      : isSelected
-                      ? 'bg-teal-100 text-teal-900'
-                      : 'text-stone-700'
-                  }`}
-                >
-                  {day}
-                </span>
-                {dayEvents.length > 0 && (
-                  <span className="text-xs font-semibold text-teal-700">
-                    {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Selected day panel */}
       {selectedDay && (
-        <div className="bg-white border border-teal-200 rounded-2xl p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-stone-900" style={{ fontFamily: 'var(--font-serif)' }}>
-              {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-AU', {
-                weekday: 'long', day: 'numeric', month: 'long',
-              })}
+        <div style={{
+          background: 'var(--colour-surface)', border: '1px solid var(--colour-line)',
+          borderRadius: 'var(--radius-md)', padding: 'var(--space-5)',
+          boxShadow: 'var(--shadow-card)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--colour-ink)' }}>
+              {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
             </h3>
-            <button onClick={() => setSelectedDay(null)} className="p-1 hover:bg-stone-100 rounded">
-              <X className="w-4 h-4 text-stone-500" />
+            <button onClick={() => setSelectedDay(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--colour-muted)' }}>
+              <X size={16} />
             </button>
           </div>
           {selectedEvents.length === 0 ? (
-            <p className="text-stone-500 text-sm">No events on this day.</p>
+            <p style={{ color: 'var(--colour-muted)', fontSize: '.9rem' }}>No events on this day.</p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {selectedEvents.map((e) => (
-                <Link
-                  key={e.id}
-                  href={`/events/${e.id}`}
-                  className="flex items-start gap-3 p-3 rounded-xl hover:bg-teal-50 transition-colors group"
-                >
-                  <span className={`w-3 h-3 rounded-full mt-0.5 flex-shrink-0 ${TYPE_COLOURS[e.event_type] ?? 'bg-stone-400'}`} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {selectedEvents.map(e => (
+                <Link key={e.id} href={`/events/${e.id}`} style={{
+                  display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start',
+                  padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--colour-surface-soft)',
+                }}>
                   <div>
-                    <p className="text-sm font-medium text-stone-900 group-hover:text-teal-700">
-                      {e.title}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      {e.institution}
-                      {e.start_time && ` · ${e.start_time.slice(0,5)}`}
-                      {e.is_free && ' · Free'}
+                    <p style={{ fontWeight: 600, color: 'var(--colour-ink)', margin: 0, fontSize: '.95rem' }}>{e.title}</p>
+                    <p style={{ color: 'var(--colour-muted)', margin: '2px 0 0', fontSize: '.82rem' }}>
+                      {e.institution}{e.start_time && ` · ${e.start_time.slice(0, 5)}`}{e.is_free && ' · Free'}
                     </p>
                   </div>
                 </Link>

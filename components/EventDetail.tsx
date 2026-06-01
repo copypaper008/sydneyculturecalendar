@@ -1,13 +1,11 @@
 import Link from 'next/link';
-import { Calendar, MapPin, Clock, Building2, ExternalLink, Ticket, ArrowLeft, Tag } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ArrowLeft, ExternalLink, Ticket } from 'lucide-react';
 import { Event } from '@/lib/types';
 import EventCard from './EventCard';
 
 function formatDateRange(start: string, end?: string): string {
   const startDate = new Date(start + 'T00:00:00');
-  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' };
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
   if (!end || end === start) return startDate.toLocaleDateString('en-AU', opts);
   const endDate = new Date(end + 'T00:00:00');
   return `${startDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' })} – ${endDate.toLocaleDateString('en-AU', opts)}`;
@@ -17,154 +15,146 @@ function formatTime(t?: string): string | null {
   if (!t) return null;
   const [h, m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'pm' : 'am';
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-const TYPE_COLOURS: Record<string, string> = {
-  exhibition: 'bg-violet-100 text-violet-800',
-  festival: 'bg-orange-100 text-orange-800',
-  talk: 'bg-sky-100 text-sky-800',
-  performance: 'bg-pink-100 text-pink-800',
-  open_day: 'bg-green-100 text-green-800',
-  heritage: 'bg-amber-100 text-amber-800',
-  other: 'bg-stone-100 text-stone-700',
-};
-
 export default function EventDetail({ event, relatedEvents }: { event: Event; relatedEvents?: Event[] }) {
-  const typeColour = TYPE_COLOURS[event.event_type] ?? TYPE_COLOURS.other;
   const startTime = formatTime(event.start_time);
   const endTime = formatTime(event.end_time);
 
+  const meta = [
+    { label: 'Institution', value: event.institution },
+    { label: 'Dates', value: formatDateRange(event.start_date, event.end_date) },
+    startTime ? { label: 'Time', value: endTime ? `${startTime} – ${endTime}` : startTime } : null,
+    event.venue ? { label: 'Venue', value: event.venue } : null,
+    event.suburb ? { label: 'Suburb', value: event.suburb } : null,
+    { label: 'Cost', value: event.is_free ? 'Free admission' : 'Ticketed' },
+  ].filter(Boolean) as { label: string; value: string }[];
+
   return (
-    <article className="max-w-5xl mx-auto px-4 py-10">
-      <Link
-        href="/events"
-        className="inline-flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-900 mb-8"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to events
+    <article>
+      <Link href="/events" style={{
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        fontSize: '.88rem', color: 'var(--colour-primary-dark)',
+        fontWeight: 600, marginBottom: 'var(--space-5)',
+      }}>
+        <ArrowLeft size={16} /> Back to events
       </Link>
 
-      {/* Two-column layout: image left, info right */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-        {/* Left: image */}
+      {/* Full-width hero image */}
+      <div style={{
+        width: '100%', aspectRatio: '21/9', overflow: 'hidden',
+        borderRadius: 'var(--radius-lg)', background: '#e8e3da',
+        marginBottom: 'var(--space-5)',
+      }}>
+        {event.image_url ? (
+          <img src={event.image_url} alt={event.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e8e3da, #c9c2b5)' }} />
+        )}
+      </div>
+
+      {/* Two-column: left = info, right = metadata */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 'var(--space-7)', alignItems: 'start' }}>
+
+        {/* Left */}
         <div>
-          {event.image_url ? (
-            <div className="rounded-2xl overflow-hidden aspect-[4/3] bg-stone-100">
-              <img src={event.image_url} alt={event.title} className="w-full h-full object-cover" />
-            </div>
-          ) : (
-            <div className="rounded-2xl aspect-[4/3] bg-gradient-to-br from-stone-100 to-stone-200" />
-          )}
-        </div>
-
-        {/* Right: info */}
-        <div className="flex flex-col">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${typeColour}`}>
-              {event.event_type.replace('_', ' ')}
-            </span>
-            {event.is_free ? (
-              <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100">Free admission</Badge>
-            ) : (
-              <Badge variant="outline" className="text-stone-500">Ticketed</Badge>
-            )}
-          </div>
-
-          <h1
-            className="text-2xl sm:text-3xl font-bold text-stone-900 leading-tight mb-5"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
+          <p style={{ fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--colour-accent)', margin: '0 0 var(--space-3)' }}>
+            {event.event_type.replace('_', ' ')}
+          </p>
+          <h1 style={{
+            fontFamily: 'var(--font-display)', fontSize: 'clamp(1.8rem, 4vw, 3rem)',
+            color: 'var(--colour-ink)', letterSpacing: '-.03em', marginBottom: 'var(--space-4)',
+          }}>
             {event.title}
           </h1>
 
-          <div className="flex flex-col gap-3 mb-6">
-            <InfoRow icon={Building2} label="Institution" value={event.institution} />
-            <InfoRow icon={Calendar} label="Dates" value={formatDateRange(event.start_date, event.end_date)} />
-            {startTime && (
-              <InfoRow icon={Clock} label="Time" value={endTime ? `${startTime} – ${endTime}` : startTime} />
-            )}
-            {event.venue && <InfoRow icon={MapPin} label="Venue" value={event.venue} />}
-            {event.suburb && <InfoRow icon={MapPin} label="Suburb" value={event.suburb} />}
-          </div>
+          {event.description && (
+            <>
+              <h3 style={{ fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--colour-muted)', marginBottom: 'var(--space-3)' }}>
+                About
+              </h3>
+              <p style={{ color: 'var(--colour-muted)', lineHeight: 1.7, fontSize: '1rem', marginBottom: 'var(--space-5)' }}>
+                {event.description}
+              </p>
+            </>
+          )}
 
-          <div className="flex flex-wrap gap-3 mt-auto">
+          {event.tags && event.tags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+              {event.tags.map(tag => (
+                <span key={tag} style={{
+                  padding: '4px 12px', background: 'var(--colour-surface)',
+                  border: '1px solid var(--colour-line)', borderRadius: '999px',
+                  fontSize: '.78rem', color: 'var(--colour-muted)',
+                }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: metadata + actions */}
+        <div style={{
+          background: 'var(--colour-surface)', border: '1px solid var(--colour-line)',
+          borderRadius: 'var(--radius-md)', padding: 'var(--space-5)',
+          boxShadow: 'var(--shadow-card)',
+        }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {meta.map(({ label, value }) => (
+                <tr key={label} style={{ borderBottom: '1px solid var(--colour-line)' }}>
+                  <td style={{ padding: 'var(--space-3) 0', fontSize: '.78rem', fontWeight: 700, color: 'var(--colour-muted)', textTransform: 'uppercase', letterSpacing: '.04em', paddingRight: 'var(--space-3)', whiteSpace: 'nowrap' }}>
+                    {label}
+                  </td>
+                  <td style={{ padding: 'var(--space-3) 0', fontSize: '.9rem', color: 'var(--colour-ink)', fontWeight: 500 }}>
+                    {value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
             {event.event_url && (
-              <Button asChild className="bg-teal-700 hover:bg-teal-800 text-white gap-2">
-                <a href={event.event_url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="w-4 h-4" />
-                  Official website
-                </a>
-              </Button>
+              <a href={event.event_url} target="_blank" rel="noopener noreferrer" style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                minHeight: '44px', padding: '0 var(--space-4)',
+                background: 'var(--colour-primary)', color: 'white',
+                borderRadius: 'var(--radius-sm)', fontWeight: 750, fontSize: '.9rem',
+              }}>
+                <ExternalLink size={15} /> Official website
+              </a>
             )}
             {event.ticket_url && (
-              <Button asChild variant="outline" className="border-teal-600 text-teal-700 hover:bg-teal-50 gap-2">
-                <a href={event.ticket_url} target="_blank" rel="noopener noreferrer">
-                  <Ticket className="w-4 h-4" />
-                  Get tickets
-                </a>
-              </Button>
+              <a href={event.ticket_url} target="_blank" rel="noopener noreferrer" style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                minHeight: '44px', padding: '0 var(--space-4)',
+                background: 'white', color: 'var(--colour-primary-dark)',
+                border: '1px solid var(--colour-line)',
+                borderRadius: 'var(--radius-sm)', fontWeight: 750, fontSize: '.9rem',
+              }}>
+                <Ticket size={15} /> Get tickets
+              </a>
             )}
           </div>
         </div>
       </div>
 
-      {/* Description */}
-      {event.description && (
-        <div className="mb-8 max-w-2xl">
-          <p className="text-stone-700 leading-relaxed">{event.description}</p>
-        </div>
-      )}
-
-      {/* Tags */}
-      {event.tags && event.tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-10">
-          <Tag className="w-4 h-4 text-stone-400" />
-          {event.tags.map((tag) => (
-            <span key={tag} className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* You may also like */}
+      {/* Related events */}
       {relatedEvents && relatedEvents.length > 0 && (
-        <section>
-          <h2
-            className="text-xl font-bold text-stone-900 mb-5"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
+        <section style={{ marginTop: 'var(--space-7)' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: 'var(--space-4)', color: 'var(--colour-ink)' }}>
             You may also like
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {relatedEvents.slice(0, 3).map((e) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+            {relatedEvents.slice(0, 3).map(e => (
               <EventCard key={e.id} event={e} />
             ))}
           </div>
         </section>
       )}
     </article>
-  );
-}
-
-function InfoRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-start gap-2.5 text-sm">
-      <Icon className="w-4 h-4 text-teal-600 mt-0.5 flex-shrink-0" />
-      <div>
-        <span className="text-stone-500 text-xs uppercase tracking-wide">{label}</span>
-        <p className="text-stone-800 font-medium">{value}</p>
-      </div>
-    </div>
   );
 }
