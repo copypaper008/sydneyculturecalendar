@@ -49,7 +49,7 @@ export default function EventList({ events }: { events: Event[] }) {
           <p style={{ marginTop: 'var(--space-2)', fontSize: '.9rem' }}>Try adjusting your filters</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+        <div className="cards-3">
           {filtered.map((event) => (
             <EventCard key={event.id} event={event} />
           ))}

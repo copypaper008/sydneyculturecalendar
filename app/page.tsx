@@ -30,23 +30,24 @@ export default async function Home() {
 
   return (
     <div>
-      {/* Hero */}
+      {/* Hero — full-bleed, break out of main's padding */}
       <div style={{
         minHeight: '420px',
         display: 'flex',
         alignItems: 'center',
         marginTop: 'var(--space-4)',
-        padding: 'var(--space-6)',
-        background: `linear-gradient(90deg, rgb(255 253 248 / 96%), rgb(255 253 248 / 45%)),
+        marginInline: 'calc(var(--space-4) * -1)',
+        padding: 'var(--space-6) max(var(--space-6), 5vw)',
+        background: `linear-gradient(90deg, rgb(255 253 248 / 95%) 40%, rgb(255 253 248 / 20%)),
           url("https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&w=1800&q=80")`,
-        backgroundPosition: 'center',
+        backgroundPosition: 'center right',
         backgroundSize: 'cover',
         border: '1px solid var(--colour-line)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-soft)',
       }}>
         <div style={{ maxWidth: '530px' }}>
-          <p style={{ color: 'var(--colour-accent)', fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', margin: 0 }}>
+          <p style={{ color: 'var(--colour-primary)', fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', margin: 0 }}>
             Sydney, Australia
           </p>
           <h1 style={{ fontSize: 'clamp(2.6rem, 6vw, 4.5rem)', fontFamily: 'var(--font-display)', letterSpacing: '-.03em', marginBlock: 'var(--space-3)', color: 'var(--colour-ink)' }}>
@@ -77,7 +78,7 @@ export default async function Home() {
 
       {/* Discovery quick-links */}
       <div style={{ marginTop: 'var(--space-7)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)' }}>
+        <div className="discovery-grid">
           {[
             { label: 'Today in Sydney', count: todayEvents.length, href: '/events' },
             { label: 'This Weekend', count: weekendEvents.length, href: '/events' },
@@ -118,7 +119,7 @@ export default async function Home() {
             View all →
           </Link>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+        <div className="cards-3">
           {featured.map(event => (
             <EventCard key={event.id} event={event} />
           ))}
@@ -130,7 +131,7 @@ export default async function Home() {
         <h2 style={{ fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontFamily: 'var(--font-display)', marginBottom: 'var(--space-4)' }}>
           Browse by type
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
+        <div className="discovery-grid">
           {EVENT_TYPES.map(({ value, label }) => {
             const count = events.filter(e => e.event_type === value).length;
             if (!count) return null;

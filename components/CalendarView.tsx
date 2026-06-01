@@ -52,7 +52,7 @@ export default function CalendarView({ events }: { events: Event[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="calendar-header-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <button onClick={goToday} style={{
             minHeight: '38px', padding: '0 var(--space-3)',
@@ -66,7 +66,7 @@ export default function CalendarView({ events }: { events: Event[] }) {
             <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: 'var(--colour-muted)' }}>
               <ChevronLeft size={20} />
             </button>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', minWidth: '200px', textAlign: 'center', color: 'var(--colour-ink)' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', minWidth: '170px', textAlign: 'center', color: 'var(--colour-ink)' }}>
               {MONTHS[month]} {year}
             </h2>
             <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', color: 'var(--colour-muted)' }}>
@@ -75,8 +75,8 @@ export default function CalendarView({ events }: { events: Event[] }) {
           </div>
         </div>
 
-        {/* Type filter */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        {/* Type filter chips */}
+        <div className="chip-group">
           <button
             onClick={() => setTypeFilter('all')}
             style={{
@@ -111,27 +111,29 @@ export default function CalendarView({ events }: { events: Event[] }) {
 
       {/* Calendar grid */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
         overflow: 'hidden', background: 'var(--colour-surface)',
         border: '1px solid var(--colour-line)', borderRadius: 'var(--radius-md)',
         boxShadow: 'var(--shadow-card)',
       }}>
         {/* Day headers */}
-        {DAYS.map(d => (
-          <div key={d} style={{
-            padding: 'var(--space-2)', textAlign: 'center',
-            fontSize: '.75rem', fontWeight: 700, letterSpacing: '.04em',
-            textTransform: 'uppercase', color: 'var(--colour-muted)',
-            borderBottom: '1px solid var(--colour-line)',
-          }}>
-            {d}
-          </div>
-        ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--colour-line)' }}>
+          {DAYS.map(d => (
+            <div key={d} style={{
+              padding: 'var(--space-2)', textAlign: 'center',
+              fontSize: '.75rem', fontWeight: 700, letterSpacing: '.04em',
+              textTransform: 'uppercase', color: 'var(--colour-muted)',
+            }}>
+              {d}
+            </div>
+          ))}
+        </div>
+        {/* Cells grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '110px' }}>
 
         {/* Empty cells */}
         {Array.from({ length: firstDow }).map((_, i) => (
           <div key={`empty-${i}`} style={{
-            minHeight: '132px', padding: 'var(--space-3)',
+            padding: 'var(--space-3)', overflow: 'hidden',
             borderRight: '1px solid var(--colour-line)',
             borderBottom: '1px solid var(--colour-line)',
             background: 'var(--colour-surface-soft)',
@@ -151,14 +153,14 @@ export default function CalendarView({ events }: { events: Event[] }) {
               key={ds}
               onClick={() => setSelectedDay(isSelected ? null : ds)}
               style={{
-                minHeight: '132px', padding: 'var(--space-3)',
+                padding: 'var(--space-2)',
+                overflow: 'hidden',
                 borderRight: '1px solid var(--colour-line)',
                 borderBottom: '1px solid var(--colour-line)',
                 background: isSelected ? 'var(--colour-primary-soft)' : 'var(--colour-surface)',
                 cursor: dayEvents.length > 0 ? 'pointer' : 'default',
                 textAlign: 'left', display: 'flex', flexDirection: 'column',
-                gap: '4px', fontFamily: 'var(--font-body)',
-                border: isSelected ? `1px solid var(--colour-primary)` : undefined,
+                gap: '2px', fontFamily: 'var(--font-body)',
               }}
             >
               <strong style={{
@@ -188,7 +190,8 @@ export default function CalendarView({ events }: { events: Event[] }) {
             </button>
           );
         })}
-      </div>
+        </div>{/* end cells grid */}
+      </div>{/* end calendar */}
 
       {/* Selected day panel */}
       {selectedDay && (
