@@ -52,7 +52,7 @@ export default function EventCard({ event }: { event: Event }) {
               {event.event_type.replace('_', ' ')}
             </span>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-              {event.source && (
+              {event.source && event.source !== 'manual' && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', minHeight: '24px',
                   padding: '0 var(--space-2)', borderRadius: '999px',
@@ -63,7 +63,7 @@ export default function EventCard({ event }: { event: Event }) {
                   Feed
                 </span>
               )}
-              {!event.source && (
+              {(!event.source || event.source === 'manual') && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', minHeight: '24px',
                   padding: '0 var(--space-2)', borderRadius: '999px',
