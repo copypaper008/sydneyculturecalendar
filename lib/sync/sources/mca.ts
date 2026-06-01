@@ -1,35 +1,33 @@
 import { RawEvent } from '../types'
 
 const BASE_URL = 'https://www.mca.com.au'
-const LISTING_URL = `${BASE_URL}/events-programs/`
-const MAX_EVENTS = 30
+const API_URL = `${BASE_URL}/api/query-whats-on/?mode=block&show=everything&on=all-upcoming&for=everyone&limit=50&freeze=&filters=off&members_only=false`
 const FETCH_TIMEOUT_MS = 12_000
+
+interface MCAEvent {
+  image: { src: string; alt: string } | null
+  label: string
+  status: string
+  title: string
+  url: string
+  when: string
+}
+
+interface MCAResponse {
+  events: MCAEvent[]
+}
 
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-AU,en;q=0.9',
-  'Referer': 'https://www.mca.com.au/',
+  'Accept': 'application/json, text/plain, */*',
+  'Referer': 'https://www.mca.com.au/events-programs/',
+  'Origin': 'https://www.mca.com.au',
 }
 
 function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   return fetch(url, { signal: controller.signal, headers: BROWSER_HEADERS }).finally(() => clearTimeout(timer))
-}
-
-function stripTags(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function decodeEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
 }
 
 const MONTHS: Record<string, string> = {
@@ -48,7 +46,8 @@ function parseDate(raw: string): string | null {
 }
 
 function parseTime(raw: string): string | null {
-  const m = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i)
+  // Handle "6–11pm" style where only end has am/pm marker
+  const m = raw.match(/(\d{1,2})(?:[:.:](\d{2}))?\s*(am|pm)/i)
   if (!m) return null
   let hours = parseInt(m[1], 10)
   const mins = m[2] ?? '00'
@@ -58,200 +57,125 @@ function parseTime(raw: string): string | null {
   return `${String(hours).padStart(2, '0')}:${mins}`
 }
 
-/** Extract full event URLs from the MCA listing page */
-function extractEventUrls(html: string): string[] {
-  const urls: string[] = []
-  const seen = new Set<string>()
-  // Links to exhibitions or events-programs detail pages
-  const linkRe = /href="(https?:\/\/www\.mca\.com\.au\/(?:exhibitions|events-programs)\/[^"]+)"/gi
-  let match: RegExpExecArray | null
-  while ((match = linkRe.exec(html)) !== null) {
-    const url = match[1].split('?')[0].replace(/\/$/, '')
-    // Skip the listing page itself and pure category pages
-    if (url === LISTING_URL.replace(/\/$/, '')) continue
-    if (!seen.has(url)) {
-      seen.add(url)
-      urls.push(url)
-    }
+/**
+ * Parse MCA's `when` field, e.g.:
+ *   "22 May – 13 June 2026, 6–11pm"
+ *   "Thursday 28 May 2026, 6.30–7.30pm"
+ *   "Every Thursday, 5–9pm (excluding public holidays)"  → skip (no fixed date)
+ *   "Various dates and times"                            → skip
+ */
+function parseWhen(when: string): { start_date: string | null; end_date: string | null; start_time: string | null; end_time: string | null } {
+  // Strip trailing time part after comma to isolate date portion
+  const [datePart, timePart] = when.split(',').map(s => s.trim())
+
+  // Recurring / no fixed date
+  if (/every|various|ongoing/i.test(datePart)) {
+    return { start_date: null, end_date: null, start_time: null, end_time: null }
   }
-  return urls
-}
 
-function classifyEventType(html: string, title: string): string {
-  const text = (html + ' ' + title).toLowerCase()
-  if (text.includes('exhibition') || text.includes('on display') || text.includes('display')) return 'exhibition'
-  if (text.includes('festival')) return 'festival'
-  if (text.includes('talk') || text.includes('conversation') || text.includes('lecture') || text.includes('symposium')) return 'talk'
-  if (text.includes('performance') || text.includes('live') || text.includes('concert') || text.includes('disco')) return 'performance'
-  if (text.includes('tour') || text.includes('walk')) return 'heritage'
-  if (text.includes('workshop') || text.includes('class') || text.includes('session')) return 'other'
-  return 'other'
-}
+  let start_date: string | null = null
+  let end_date: string | null = null
 
-interface EventDetails {
-  title: string
-  description: string
-  image_url: string | null
-  start_date: string | null
-  end_date: string | null
-  start_time: string | null
-  end_time: string | null
-  event_type: string
-  is_free: boolean
-  is_online: boolean
-}
+  // "22 May – 13 June 2026" or "22 May – 13 June 2026"
+  const rangeRe = /(\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\s*[–\-—]\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/
+  const rangeMatch = datePart.match(rangeRe)
+  if (rangeMatch) {
+    const endParsed = parseDate(rangeMatch[2])
+    const year = (rangeMatch[2].match(/\d{4}/) ?? [])[0] ?? ''
+    const startRaw = /\d{4}/.test(rangeMatch[1]) ? rangeMatch[1] : `${rangeMatch[1]} ${year}`
+    start_date = parseDate(startRaw)
+    end_date = endParsed !== start_date ? endParsed : null
+  } else {
+    start_date = parseDate(datePart)
+  }
 
-async function scrapeEventPage(url: string): Promise<EventDetails | null> {
-  try {
-    const res = await fetchWithTimeout(url)
-    if (!res.ok) return null
-    const html = await res.text()
-
-    // Title
-    let title = ''
-    const ogTitle = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/)
-    if (ogTitle) {
-      title = decodeEntities(ogTitle[1])
+  // Times from timePart, e.g. "6–11pm" or "6.30–7.30pm"
+  let start_time: string | null = null
+  let end_time: string | null = null
+  if (timePart) {
+    // "6–11pm" — infer am/pm for start from end
+    const compactRange = timePart.match(/(\d{1,2}(?:[.:]\d{2})?)\s*[–\-—]\s*(\d{1,2}(?:[.:]\d{2})?\s*(?:am|pm))/i)
+    if (compactRange) {
+      const period = (compactRange[2].match(/am|pm/i) ?? [])[0] ?? 'pm'
+      end_time = parseTime(compactRange[2])
+      start_time = parseTime(`${compactRange[1]}${period}`)
     } else {
-      const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)
-      if (h1) title = decodeEntities(stripTags(h1[1]))
-    }
-    if (!title) return null
-
-    // Description
-    let description = ''
-    const ogDesc = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
-    if (ogDesc) description = decodeEntities(ogDesc[1])
-
-    // Image — og:image first, then first /files/images/ src
-    let image_url: string | null = null
-    const ogImage = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
-    if (ogImage) {
-      const raw = ogImage[1]
-      image_url = raw.startsWith('http') ? raw : `${BASE_URL}${raw}`
-    } else {
-      const imgSrc = html.match(/src="(\/files\/images\/[^"]+)"/)
-      if (imgSrc) image_url = `${BASE_URL}${imgSrc[1]}`
-    }
-
-    // Dates — MCA uses "DD Month YYYY" and "DD Month – DD Month YYYY" patterns
-    // Also check JSON-LD schema
-    let start_date: string | null = null
-    let end_date: string | null = null
-
-    // Try JSON-LD first
-    const jsonLd = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i)
-    if (jsonLd) {
-      try {
-        const data = JSON.parse(jsonLd[1])
-        const startRaw = data.startDate ?? data.datePublished ?? null
-        const endRaw = data.endDate ?? null
-        if (startRaw) start_date = startRaw.slice(0, 10)
-        if (endRaw) end_date = endRaw.slice(0, 10)
-      } catch { /* ignore */ }
-    }
-
-    // Fallback: date_range div or plain text patterns
-    if (!start_date) {
-      // "21 May – 19 October 2026" or "21 May – 19 October 2026"
-      const dateRangeRe = /(\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\s*[–\-—]\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/
-      const rangeMatch = html.match(dateRangeRe)
-      if (rangeMatch) {
-        const endParsed = parseDate(rangeMatch[2])
-        const yearMatch = rangeMatch[2].match(/\d{4}/)
-        const year = yearMatch ? yearMatch[0] : ''
-        const startRaw = rangeMatch[1].match(/\d{4}/) ? rangeMatch[1] : `${rangeMatch[1]} ${year}`
-        start_date = parseDate(startRaw)
-        end_date = endParsed !== start_date ? endParsed : null
+      // "6.30–7.30pm" already has period on end
+      const fullRange = timePart.match(/(\d{1,2}(?:[.:]\d{2})?\s*(?:am|pm))\s*[–\-—]\s*(\d{1,2}(?:[.:]\d{2})?\s*(?:am|pm))/i)
+      if (fullRange) {
+        start_time = parseTime(fullRange[1])
+        end_time = parseTime(fullRange[2])
       } else {
-        const singleDateRe = /(\d{1,2}\s+[A-Za-z]+\s+\d{4})/g
-        const dates: string[] = []
-        let dm: RegExpExecArray | null
-        while ((dm = singleDateRe.exec(html)) !== null) {
-          const parsed = parseDate(dm[1])
-          if (parsed && !dates.includes(parsed)) dates.push(parsed)
-          if (dates.length >= 2) break
-        }
-        if (dates.length >= 1) start_date = dates[0]
-        if (dates.length >= 2) end_date = dates[1]
+        start_time = parseTime(timePart)
       }
     }
-
-    // Times
-    let start_time: string | null = null
-    let end_time: string | null = null
-    const timeRangeRe = /(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[–\-—]\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
-    const timeRangeMatch = html.match(timeRangeRe)
-    if (timeRangeMatch) {
-      start_time = parseTime(timeRangeMatch[1])
-      end_time = parseTime(timeRangeMatch[2])
-    } else {
-      const singleTimeRe = /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i
-      const stm = html.match(singleTimeRe)
-      if (stm) start_time = parseTime(stm[1])
-    }
-
-    const is_free = /\bfree\b/i.test(html) && !/\bfree\s+with\s+(?:paid|ticket)/i.test(html)
-    const is_online = /online[- ]only|virtual event|webinar/i.test(html)
-    const event_type = classifyEventType(html, title)
-
-    return { title, description, image_url, start_date, end_date, start_time, end_time, event_type, is_free, is_online }
-  } catch (err) {
-    console.error(`[mca] Error scraping ${url}:`, err)
-    return null
   }
+
+  return { start_date, end_date, start_time, end_time }
+}
+
+function labelToEventType(label: string): string {
+  switch (label.toLowerCase()) {
+    case 'tours': return 'heritage'
+    case 'talks': case 'talk': return 'talk'
+    case 'live': case 'performance': return 'performance'
+    case 'festival': return 'festival'
+    case 'exhibition': return 'exhibition'
+    default: return 'other'
+  }
+}
+
+function isFree(status: string): boolean {
+  const s = status.toLowerCase()
+  if (s.includes('ticketed')) return false
+  if (s.includes('no booking')) return true
+  if (s.includes('general admission')) return false // GA ticket required
+  if (s.includes('included with')) return false
+  return true
 }
 
 export async function fetchMCAEvents(): Promise<RawEvent[]> {
-  let listingHtml: string
+  let data: MCAResponse
   try {
-    const res = await fetchWithTimeout(LISTING_URL)
+    const res = await fetchWithTimeout(API_URL)
     if (!res.ok) {
-      console.error(`[mca] Listing page returned ${res.status}`)
+      console.error(`[mca] API returned ${res.status}`)
       return []
     }
-    listingHtml = await res.text()
+    data = await res.json() as MCAResponse
   } catch (err) {
-    console.error('[mca] Failed to fetch listing page:', err)
+    console.error('[mca] Failed to fetch API:', err)
     return []
   }
 
-  const urls = extractEventUrls(listingHtml).slice(0, MAX_EVENTS)
-  console.log(`[mca] Found ${urls.length} event URLs`)
-
+  console.log(`[mca] API returned ${data.events.length} events`)
   const events: RawEvent[] = []
 
-  for (const url of urls) {
-    const slug = url.split('/').filter(Boolean).pop() ?? url
-    const details = await scrapeEventPage(url)
-    if (!details) {
-      console.log(`[mca] Skipping ${slug}: no details`)
-      continue
-    }
-    if (details.is_online) {
-      console.log(`[mca] Skipping ${slug}: online event`)
-      continue
-    }
-    if (!details.start_date) {
-      console.log(`[mca] Skipping ${slug}: no date`)
+  for (const e of data.events) {
+    const { start_date, end_date, start_time, end_time } = parseWhen(e.when)
+
+    if (!start_date) {
+      console.log(`[mca] Skipping "${e.title}": no fixed date (when: "${e.when}")`)
       continue
     }
 
+    const slug = e.url.split('/').filter(Boolean).pop() ?? e.title.toLowerCase().replace(/\s+/g, '-')
+    const image_url = e.image?.src ? `${BASE_URL}${e.image.src}` : undefined
+
     events.push({
-      title: details.title,
+      title: e.title,
       institution: 'Museum of Contemporary Art',
-      event_type: details.event_type,
-      start_date: details.start_date,
-      end_date: details.end_date ?? undefined,
-      start_time: details.start_time ?? undefined,
-      end_time: details.end_time ?? undefined,
+      event_type: labelToEventType(e.label),
+      start_date,
+      end_date: end_date ?? undefined,
+      start_time: start_time ?? undefined,
+      end_time: end_time ?? undefined,
       venue: 'MCA Australia',
       suburb: 'The Rocks',
-      description: details.description || undefined,
-      image_url: details.image_url ?? undefined,
-      event_url: url,
-      is_free: details.is_free,
-      tags: ['mca', details.is_free ? 'free' : 'ticketed'],
+      image_url,
+      event_url: e.url,
+      is_free: isFree(e.status),
+      tags: ['mca', isFree(e.status) ? 'free' : 'ticketed'],
       source: 'mca',
       source_id: slug,
     })
