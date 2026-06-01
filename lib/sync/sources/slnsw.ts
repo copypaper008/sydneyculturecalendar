@@ -5,29 +5,33 @@ const WHATS_ON_URL = `${BASE_URL}/whats-on`
 const MAX_EVENTS = 20
 const FETCH_TIMEOUT_MS = 10_000
 
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+}
+
 function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer))
+  return fetch(url, { signal: controller.signal, headers: BROWSER_HEADERS }).finally(() => clearTimeout(timer))
 }
 
-/** Extract event slugs from the whats-on listing page */
-function extractSlugs(html: string): string[] {
-  const slugs: string[] = []
-  // Match hrefs like /events/some-slug or /whats-on/some-slug
-  const linkRe = /href="\/(?:events|whats-on)\/([a-z0-9][a-z0-9\-]+)"/gi
+/** Extract event paths from the whats-on listing page, returning full paths like /events/some-slug */
+function extractEventPaths(html: string): string[] {
+  const paths: string[] = []
+  const linkRe = /href="(\/(?:events|whats-on)\/[a-z0-9][a-z0-9\-]+)"/gi
   let match: RegExpExecArray | null
   const seen = new Set<string>()
   while ((match = linkRe.exec(html)) !== null) {
-    const slug = match[1]
-    // Skip pagination/filter slugs
+    const path = match[1]
+    const slug = path.split('/').pop()!
     if (slug.startsWith('page') || slug.startsWith('filter')) continue
-    if (!seen.has(slug)) {
-      seen.add(slug)
-      slugs.push(slug)
+    if (!seen.has(path)) {
+      seen.add(path)
+      paths.push(path)
     }
   }
-  return slugs
+  return paths
 }
 
 /** Strip HTML tags from a string */
@@ -85,8 +89,8 @@ interface EventDetails {
 }
 
 /** Scrape a single event page for details */
-async function scrapeEventPage(slug: string): Promise<EventDetails | null> {
-  const url = `${BASE_URL}/events/${slug}`
+async function scrapeEventPage(path: string): Promise<EventDetails | null> {
+  const url = `${BASE_URL}${path}`
   try {
     const res = await fetchWithTimeout(url)
     if (!res.ok) return null
@@ -156,8 +160,8 @@ async function scrapeEventPage(slug: string): Promise<EventDetails | null> {
       if (stm) start_time = parseTime(stm[1])
     }
 
-    // Venue / online
-    const isOnline = /\bonline\b|\bvirtual\b|\bwebinar\b/i.test(html)
+    // Venue / online — only match explicit online-only indicators, not generic "online" mentions
+    const isOnline = /online[- ]only|virtual event|webinar/i.test(html)
     let venue: string | null = 'State Library of NSW'
     if (isOnline) venue = null // caller will skip online events
 
@@ -182,23 +186,24 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
     return []
   }
 
-  const slugs = extractSlugs(listingHtml).slice(0, MAX_EVENTS)
-  console.log(`[slnsw] Found ${slugs.length} event slugs`)
+  const paths = extractEventPaths(listingHtml).slice(0, MAX_EVENTS)
+  console.log(`[slnsw] Found ${paths.length} event paths`)
 
   const events: RawEvent[] = []
 
-  for (const slug of slugs) {
-    const details = await scrapeEventPage(slug)
+  for (const path of paths) {
+    const slug = path.split('/').pop()!
+    const details = await scrapeEventPage(path)
     if (!details) {
-      console.log(`[slnsw] Skipping ${slug}: no details`)
+      console.log(`[slnsw] Skipping ${path}: no details`)
       continue
     }
     if (details.is_online) {
-      console.log(`[slnsw] Skipping ${slug}: online event`)
+      console.log(`[slnsw] Skipping ${path}: online event`)
       continue
     }
     if (!details.start_date) {
-      console.log(`[slnsw] Skipping ${slug}: no date found`)
+      console.log(`[slnsw] Skipping ${path}: no date found`)
       continue
     }
 
@@ -213,7 +218,7 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
       venue: details.venue ?? 'State Library of NSW',
       suburb: 'Sydney CBD',
       description: details.description || undefined,
-      event_url: `${BASE_URL}/events/${slug}`,
+      event_url: `${BASE_URL}${path}`,
       is_free: true,
       tags: ['state-library', 'free'],
       source: 'slnsw',
