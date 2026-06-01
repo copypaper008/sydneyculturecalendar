@@ -1,5 +1,6 @@
+'use client';
+
 import Link from 'next/link';
-import { Calendar, MapPin, Building2 } from 'lucide-react';
 import { Event } from '@/lib/types';
 
 function formatDateRange(start: string, end?: string): string {
@@ -10,76 +11,81 @@ function formatDateRange(start: string, end?: string): string {
   return `${startDate.toLocaleDateString('en-AU', opts)} – ${endDate.toLocaleDateString('en-AU', { ...opts, year: 'numeric' })}`;
 }
 
-const TYPE_COLOURS: Record<string, string> = {
-  exhibition: 'bg-violet-100 text-violet-800',
-  festival: 'bg-orange-100 text-orange-800',
-  talk: 'bg-sky-100 text-sky-800',
-  performance: 'bg-pink-100 text-pink-800',
-  open_day: 'bg-green-100 text-green-800',
-  heritage: 'bg-amber-100 text-amber-800',
-  other: 'bg-stone-100 text-stone-700',
-};
-
 export default function EventCard({ event }: { event: Event }) {
-  const typeColour = TYPE_COLOURS[event.event_type] ?? TYPE_COLOURS.other;
-
   return (
-    <Link href={`/events/${event.id}`} className="group block h-full">
-      <div
-        className="h-full flex flex-col overflow-hidden rounded-2xl bg-white border border-stone-200 hover:border-teal-400 transition-all duration-200"
-        style={{ boxShadow: 'var(--shadow-card)' }}
+    <Link href={`/events/${event.id}`} style={{ display: 'block', height: '100%' }}>
+      <div style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: 'var(--colour-surface)',
+        border: '1px solid var(--colour-line)',
+        borderRadius: 'var(--radius-md)',
+        boxShadow: 'var(--shadow-card)',
+        transition: 'box-shadow 0.2s, border-color 0.2s',
+      }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--colour-primary)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--colour-line)'; }}
       >
-        {/* Image with overlaid pills */}
-        <div className="relative aspect-video w-full overflow-hidden bg-stone-100">
+        {/* Image */}
+        <div style={{ position: 'relative', aspectRatio: '16/9', overflow: 'hidden', background: '#e8e3da' }}>
           {event.image_url ? (
             <img
               src={event.image_url}
               alt={event.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-br from-stone-100 to-stone-200" />
+            <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e8e3da, #d5cfc4)' }} />
           )}
-
-          {/* FREE / TICKETED pill — top right */}
-          <span
-            className={`absolute top-2.5 right-2.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
-              event.is_free
-                ? 'bg-teal-600 text-white'
-                : 'bg-white/90 text-stone-700 border border-stone-200'
-            }`}
-          >
-            {event.is_free ? 'FREE' : 'TICKETED'}
-          </span>
-
-          {/* Type badge — bottom left */}
-          <span className={`absolute bottom-2.5 left-2.5 text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${typeColour}`}>
-            {event.event_type.replace('_', ' ')}
-          </span>
         </div>
 
-        <div className="p-4 flex flex-col gap-2 flex-1">
-          <h3
-            className="font-semibold text-stone-900 leading-snug line-clamp-2 group-hover:text-teal-700 transition-colors"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
+        {/* Body */}
+        <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flex: 1 }}>
+          {/* Tag row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{
+              fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em',
+              textTransform: 'uppercase', color: 'var(--colour-accent)',
+            }}>
+              {event.event_type.replace('_', ' ')}
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', minHeight: '24px',
+              padding: '0 var(--space-2)', borderRadius: '999px',
+              background: event.is_free ? 'var(--colour-free)' : 'var(--colour-ticketed)',
+              border: event.is_free ? 'none' : '1px solid var(--colour-line)',
+              fontSize: '.72rem', fontWeight: 750, textTransform: 'uppercase',
+              color: 'var(--colour-ink)',
+            }}>
+              {event.is_free ? 'Free' : 'Ticketed'}
+            </span>
+          </div>
+
+          {/* Title */}
+          <h3 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.08rem',
+            fontWeight: 700,
+            color: 'var(--colour-ink)',
+            lineHeight: 1.2,
+            letterSpacing: '-.02em',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
             {event.title}
           </h3>
-          <div className="flex flex-col gap-1 mt-auto">
-            <div className="flex items-center gap-1.5 text-xs text-stone-500">
-              <Building2 className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{event.institution}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-stone-500">
-              <Calendar className="w-3 h-3 flex-shrink-0" />
-              <span>{formatDateRange(event.start_date, event.end_date)}</span>
-            </div>
-            {event.suburb && (
-              <div className="flex items-center gap-1.5 text-xs text-stone-500">
-                <MapPin className="w-3 h-3 flex-shrink-0" />
-                <span>{event.suburb}</span>
-              </div>
-            )}
+
+          {/* Metadata — no icons, plain text */}
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
+            <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>{event.institution}</span>
+            <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>
+              {formatDateRange(event.start_date, event.end_date)}
+              {event.suburb && ` · ${event.suburb}`}
+            </span>
           </div>
         </div>
       </div>

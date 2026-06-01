@@ -1,37 +1,61 @@
 @import "tailwindcss";
 
 :root {
-  /* Warm cream palette */
-  --color-cream: #faf7f2;
-  --color-cream-dark: #f2ece0;
-  --color-parchment: #e8dcc8;
+  --colour-ink: #151922;
+  --colour-muted: #667085;
+  --colour-line: #e6e1d8;
+  --colour-surface: #fffdf8;
+  --colour-surface-soft: #f7f3ec;
+  --colour-primary: #0f766e;
+  --colour-primary-dark: #0b5f58;
+  --colour-primary-soft: #d9f3ef;
+  --colour-accent: #7c3aed;
+  --colour-free: #b8f5e1;
+  --colour-ticketed: #f3efe7;
 
-  /* Teal primary */
-  --color-teal-primary: #2a9d8f;
-  --color-teal-dark: #186f65;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
-  /* Purple accent */
-  --color-purple-accent: #7c3aed;
+  --max-width: 1180px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-card: 0 8px 28px rgb(21 25 34 / 8%);
+  --shadow-soft: 0 4px 18px rgb(21 25 34 / 7%);
 
-  /* Typography */
-  --font-serif: 'Georgia', 'Times New Roman', serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --space-1: .5rem;
+  --space-2: .75rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+  --space-6: 3rem;
+  --space-7: 4.5rem;
+}
 
-  /* Radius */
-  --radius-card: 12px;
-
-  /* Shadows */
-  --shadow-card: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.08);
-  --shadow-nav: 0 1px 0 rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.06);
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--color-cream);
-  color: #1c1917;
-  font-family: var(--font-sans);
+  margin: 0;
+  color: var(--colour-ink);
+  background: var(--colour-surface-soft);
+  font-family: var(--font-body);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-.font-serif {
-  font-family: var(--font-serif);
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  line-height: 1.05;
+}
+
+h1, h2 {
+  font-family: var(--font-display);
+  letter-spacing: -.03em;
 }

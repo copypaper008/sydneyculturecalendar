@@ -1,14 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { CalendarDays, List, Search } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 const navItems = [
-  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { href: '/events', label: 'Events', icon: List },
+  { href: '/events', label: 'Events' },
+  { href: '/calendar', label: 'Calendar' },
 ];
 
 export default function NavBar() {
@@ -18,56 +16,68 @@ export default function NavBar() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (query.trim()) {
-      router.push(`/events?q=${encodeURIComponent(query.trim())}`);
-    }
+    if (query.trim()) router.push(`/events?q=${encodeURIComponent(query.trim())}`);
   }
 
   return (
-    <header
-      className="sticky top-0 z-50 bg-white/90 backdrop-blur-sm border-b border-stone-200"
-      style={{ boxShadow: 'var(--shadow-nav)' }}
-    >
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-6">
-        <Link href="/" className="flex-shrink-0">
-          <span className="font-serif text-xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-serif)' }}>
-            Sydney Culture
-          </span>
-        </Link>
+    <header style={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 10,
+      display: 'grid',
+      gridTemplateColumns: '1fr auto 280px',
+      gap: 'var(--space-5)',
+      alignItems: 'center',
+      padding: `var(--space-3) max(24px, calc((100vw - var(--max-width)) / 2 + var(--space-4)))`,
+      background: 'rgb(255 253 248 / 92%)',
+      borderBottom: '1px solid var(--colour-line)',
+      backdropFilter: 'blur(14px)',
+    }}>
+      <Link href="/" style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', fontWeight: 700, color: 'var(--colour-ink)' }}>
+        Sydney Culture
+      </Link>
 
-        <nav className="flex items-center gap-1">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-b-2 ${
-                  active
-                    ? 'border-teal-600 text-teal-700'
-                    : 'border-transparent text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+      <nav style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
+        {navItems.map(({ href, label }) => {
+          const active = pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              style={{
+                paddingBlock: '.35rem',
+                color: active ? 'var(--colour-primary-dark)' : 'var(--colour-muted)',
+                fontSize: '.92rem',
+                fontWeight: 650,
+                borderBottom: active ? '2px solid var(--colour-primary)' : '2px solid transparent',
+              }}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
 
-        <form onSubmit={handleSearch} className="ml-auto flex-1 max-w-xs">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search events…"
-              className="w-full pl-9 pr-4 py-1.5 text-sm bg-stone-100 border border-stone-200 rounded-full placeholder-stone-400 text-stone-800 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition-all"
-            />
-          </div>
-        </form>
-      </div>
+      <form onSubmit={handleSearch}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search cultural events…"
+          style={{
+            width: '100%',
+            minHeight: '44px',
+            padding: '0 var(--space-3)',
+            color: 'var(--colour-ink)',
+            background: 'white',
+            border: '1px solid var(--colour-line)',
+            borderRadius: '999px',
+            fontSize: '.9rem',
+            outline: 'none',
+            fontFamily: 'var(--font-body)',
+          }}
+        />
+      </form>
     </header>
   );
 }
