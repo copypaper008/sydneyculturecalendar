@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { Event } from '@/lib/types';
+import { Event, EVENT_TYPES } from '@/lib/types';
 
 const MONTHS = [
   'January','February','March','April','May','June',
@@ -18,14 +18,23 @@ const TYPE_COLOURS: Record<string, string> = {
   performance: 'bg-pink-500',
   open_day: 'bg-green-500',
   heritage: 'bg-amber-500',
-  other: 'bg-gray-400',
+  other: 'bg-stone-400',
+};
+
+const TYPE_CHIP_COLOURS: Record<string, string> = {
+  exhibition: 'bg-violet-100 text-violet-800 border-violet-200',
+  festival: 'bg-orange-100 text-orange-800 border-orange-200',
+  talk: 'bg-sky-100 text-sky-800 border-sky-200',
+  performance: 'bg-pink-100 text-pink-800 border-pink-200',
+  open_day: 'bg-green-100 text-green-800 border-green-200',
+  heritage: 'bg-amber-100 text-amber-800 border-amber-200',
+  other: 'bg-stone-100 text-stone-700 border-stone-200',
 };
 
 function isoDate(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-/** Returns true if event is active on the given date string */
 function eventActiveOn(event: Event, dateStr: string): boolean {
   if (event.end_date) return event.start_date <= dateStr && event.end_date >= dateStr;
   return event.start_date === dateStr;
@@ -36,6 +45,9 @@ export default function CalendarView({ events }: { events: Event[] }) {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
+  const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -47,55 +59,94 @@ export default function CalendarView({ events }: { events: Event[] }) {
     else setMonth(m => m + 1);
     setSelectedDay(null);
   };
+  const goToday = () => {
+    setYear(today.getFullYear());
+    setMonth(today.getMonth());
+    setSelectedDay(null);
+  };
 
-  const firstDow = new Date(year, month, 1).getDay(); // day of week for 1st
+  const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Map date string → events
+  const filteredEvents = useMemo(
+    () => (typeFilter === 'all' ? events : events.filter((e) => e.event_type === typeFilter)),
+    [events, typeFilter],
+  );
+
   const eventsByDate = useMemo(() => {
     const map: Record<string, Event[]> = {};
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = isoDate(year, month, d);
-      map[ds] = events.filter((e) => eventActiveOn(e, ds));
+      map[ds] = filteredEvents.filter((e) => eventActiveOn(e, ds));
     }
     return map;
-  }, [events, year, month, daysInMonth]);
+  }, [filteredEvents, year, month, daysInMonth]);
 
   const selectedEvents = selectedDay ? (eventsByDate[selectedDay] ?? []) : [];
 
-  const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
-
   return (
-    <div className="flex flex-col gap-4">
-      {/* Month navigation */}
-      <div className="flex items-center justify-between">
-        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <ChevronLeft className="w-5 h-5 text-gray-600" />
+    <div className="flex flex-col gap-5">
+      {/* Month navigation + Today button */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={goToday}
+          className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:border-teal-400 transition-all"
+        >
+          Today
         </button>
-        <h2 className="text-xl font-bold text-gray-900">
-          {MONTHS[month]} {year}
-        </h2>
-        <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <ChevronRight className="w-5 h-5 text-gray-600" />
-        </button>
+        <div className="flex items-center gap-1 ml-auto">
+          <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-stone-100 transition-colors">
+            <ChevronLeft className="w-5 h-5 text-stone-600" />
+          </button>
+          <h2
+            className="text-xl font-bold text-stone-900 min-w-[160px] text-center"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            {MONTHS[month]} {year}
+          </h2>
+          <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-stone-100 transition-colors">
+            <ChevronRight className="w-5 h-5 text-stone-600" />
+          </button>
+        </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3">
-        {Object.entries(TYPE_COLOURS).map(([type, colour]) => (
-          <div key={type} className="flex items-center gap-1.5 text-xs text-gray-600">
-            <span className={`w-2.5 h-2.5 rounded-full ${colour}`} />
-            {type.replace('_', ' ')}
-          </div>
-        ))}
+      {/* Event type filter chips */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setTypeFilter('all')}
+          className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
+            typeFilter === 'all'
+              ? 'bg-teal-600 text-white border-teal-600'
+              : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300'
+          }`}
+        >
+          All types
+        </button>
+        {EVENT_TYPES.map(({ value, label }) => {
+          const active = typeFilter === value;
+          return (
+            <button
+              key={value}
+              onClick={() => setTypeFilter(active ? 'all' : value)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                active ? 'bg-teal-600 text-white border-teal-600' : `${TYPE_CHIP_COLOURS[value]} hover:opacity-80`
+              }`}
+            >
+              {!active && (
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${TYPE_COLOURS[value]}`} />
+              )}
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Grid */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+      {/* Calendar grid */}
+      <div className="border border-stone-200 rounded-2xl overflow-hidden bg-white" style={{ boxShadow: 'var(--shadow-card)' }}>
         {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-gray-200">
+        <div className="grid grid-cols-7 border-b border-stone-200">
           {DAYS.map((d) => (
-            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div key={d} className="py-2 text-center text-xs font-semibold text-stone-500 uppercase tracking-wide">
               {d}
             </div>
           ))}
@@ -103,9 +154,8 @@ export default function CalendarView({ events }: { events: Event[] }) {
 
         {/* Cells */}
         <div className="grid grid-cols-7">
-          {/* Leading empty cells */}
           {Array.from({ length: firstDow }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[80px] border-b border-r border-gray-100 bg-gray-50/50" />
+            <div key={`empty-${i}`} className="min-h-[88px] border-b border-r border-stone-100 bg-stone-50/50" />
           ))}
 
           {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -119,37 +169,30 @@ export default function CalendarView({ events }: { events: Event[] }) {
               <button
                 key={ds}
                 onClick={() => setSelectedDay(isSelected ? null : ds)}
-                className={`min-h-[80px] border-b border-r border-gray-100 p-1.5 flex flex-col items-start text-left transition-colors ${
+                className={`min-h-[88px] border-b border-r border-stone-100 p-2 flex flex-col items-start text-left transition-colors ${
                   isSelected
-                    ? 'bg-teal-50 border-teal-300'
+                    ? 'bg-teal-50'
                     : dayEvents.length > 0
-                    ? 'hover:bg-gray-50 cursor-pointer'
+                    ? 'hover:bg-stone-50 cursor-pointer'
                     : 'cursor-default'
                 }`}
               >
                 <span
-                  className={`w-6 h-6 flex items-center justify-center rounded-full text-sm font-medium mb-1 ${
+                  className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-1 ${
                     isToday
-                      ? 'bg-teal-700 text-white'
+                      ? 'bg-teal-600 text-white'
                       : isSelected
-                      ? 'bg-teal-200 text-teal-900'
-                      : 'text-gray-700'
+                      ? 'bg-teal-100 text-teal-900'
+                      : 'text-stone-700'
                   }`}
                 >
                   {day}
                 </span>
-                <div className="flex flex-wrap gap-0.5">
-                  {dayEvents.slice(0, 4).map((e) => (
-                    <span
-                      key={e.id}
-                      className={`w-2 h-2 rounded-full ${TYPE_COLOURS[e.event_type] ?? 'bg-gray-400'}`}
-                      title={e.title}
-                    />
-                  ))}
-                  {dayEvents.length > 4 && (
-                    <span className="text-xs text-gray-400 ml-0.5">+{dayEvents.length - 4}</span>
-                  )}
-                </div>
+                {dayEvents.length > 0 && (
+                  <span className="text-xs font-semibold text-teal-700">
+                    {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -158,33 +201,33 @@ export default function CalendarView({ events }: { events: Event[] }) {
 
       {/* Selected day panel */}
       {selectedDay && (
-        <div className="bg-white border border-teal-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">
+        <div className="bg-white border border-teal-200 rounded-2xl p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-stone-900" style={{ fontFamily: 'var(--font-serif)' }}>
               {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-AU', {
                 weekday: 'long', day: 'numeric', month: 'long',
               })}
             </h3>
-            <button onClick={() => setSelectedDay(null)} className="p-1 hover:bg-gray-100 rounded">
-              <X className="w-4 h-4 text-gray-500" />
+            <button onClick={() => setSelectedDay(null)} className="p-1 hover:bg-stone-100 rounded">
+              <X className="w-4 h-4 text-stone-500" />
             </button>
           </div>
           {selectedEvents.length === 0 ? (
-            <p className="text-gray-500 text-sm">No events on this day.</p>
+            <p className="text-stone-500 text-sm">No events on this day.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {selectedEvents.map((e) => (
                 <Link
                   key={e.id}
                   href={`/events/${e.id}`}
-                  className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-teal-50 transition-colors group"
+                  className="flex items-start gap-3 p-3 rounded-xl hover:bg-teal-50 transition-colors group"
                 >
-                  <span className={`w-3 h-3 rounded-full mt-1 flex-shrink-0 ${TYPE_COLOURS[e.event_type] ?? 'bg-gray-400'}`} />
+                  <span className={`w-3 h-3 rounded-full mt-0.5 flex-shrink-0 ${TYPE_COLOURS[e.event_type] ?? 'bg-stone-400'}`} />
                   <div>
-                    <p className="text-sm font-medium text-gray-900 group-hover:text-teal-700">
+                    <p className="text-sm font-medium text-stone-900 group-hover:text-teal-700">
                       {e.title}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-stone-500">
                       {e.institution}
                       {e.start_time && ` · ${e.start_time.slice(0,5)}`}
                       {e.is_free && ' · Free'}
