@@ -52,7 +52,7 @@ export default function EventCard({ event }: { event: Event }) {
               {event.event_type.replace('_', ' ')}
             </span>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-              {event.source === 'slnsw' && (
+              {event.source && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', minHeight: '24px',
                   padding: '0 var(--space-2)', borderRadius: '999px',
@@ -61,6 +61,17 @@ export default function EventCard({ event }: { event: Event }) {
                   color: '#1a6a9a',
                 }}>
                   Feed
+                </span>
+              )}
+              {!event.source && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', minHeight: '24px',
+                  padding: '0 var(--space-2)', borderRadius: '999px',
+                  background: '#fde8f0', border: '1px solid #f0b3cd',
+                  fontSize: '.72rem', fontWeight: 750, textTransform: 'uppercase',
+                  color: '#9a1a55',
+                }}>
+                  Sample
                 </span>
               )}
               <span style={{
