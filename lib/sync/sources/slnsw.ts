@@ -167,7 +167,7 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
 
     return { title, description, start_date, end_date, start_time, end_time, venue, is_online: isOnline }
   } catch (err) {
-    console.error(`[slnsw] Error fetching event page ${slug}:`, err)
+    console.error(`[slnsw] Error fetching event page ${path}:`, err)
     return null
   }
 }
