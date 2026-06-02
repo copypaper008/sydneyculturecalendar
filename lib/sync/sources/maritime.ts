@@ -250,7 +250,10 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         try {
           const d = JSON.parse(inner)
           const items = Array.isArray(d) ? d : [d]
+          // Only trust event-typed JSON-LD, not WebSite/Organization blocks
           for (const item of items) {
+            const type = String(item['@type'] ?? '').toLowerCase()
+            if (!type.includes('event') && !type.includes('exhibition')) continue
             if (item.startDate && !start_date) start_date = item.startDate.slice(0, 10)
             if (item.endDate && !end_date) end_date = item.endDate.slice(0, 10)
           }
