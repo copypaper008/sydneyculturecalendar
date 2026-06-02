@@ -255,7 +255,7 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
         title,
         institution: 'Australian National Maritime Museum',
         event_type: 'other',
-        start_date,
+        start_date: start_date ?? today,
         end_date: end_date ?? undefined,
         venue: 'Australian National Maritime Museum',
         suburb: 'Darling Harbour',
