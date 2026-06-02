@@ -107,7 +107,7 @@ export default function EventCard({ event }: { event: Event }) {
           <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
             <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>{event.institution}</span>
             <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>
-              {formatDateRange(event.start_date, event.end_date)}
+              {Array.isArray(event.tags) && event.tags.includes('ongoing') ? 'Ongoing' : formatDateRange(event.start_date, event.end_date)}
               {event.suburb && ` · ${event.suburb}`}
             </span>
           </div>
