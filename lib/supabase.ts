@@ -28,26 +28,26 @@ function interleaveOngoing(events: Event[]): Event[] {
   return result
 }
 
-const SCHOOL_RE = /\bschool\b/i
+const EVENT_FILTER_RE = /\bschool\b|\bmembers?\s+events?\b/i
 
-function filterSchoolEvents(events: Event[]): Event[] {
-  return events.filter(e => !SCHOOL_RE.test(e.title) && !SCHOOL_RE.test(e.description ?? ''))
+function filterEvents(events: Event[]): Event[] {
+  return events.filter(e => !EVENT_FILTER_RE.test(e.title) && !EVENT_FILTER_RE.test(e.description ?? ''))
 }
 
 export async function getEvents(): Promise<Event[]> {
-  if (!supabase) return filterSchoolEvents(seedEvents);
+  if (!supabase) return filterEvents(seedEvents);
   const { data, error } = await supabase
     .from('events')
     .select('*')
     .order('start_date', { ascending: true });
-  if (error || !data) return filterSchoolEvents(seedEvents);
-  return interleaveOngoing(filterSchoolEvents(data as Event[]));
+  if (error || !data) return filterEvents(seedEvents);
+  return interleaveOngoing(filterEvents(data as Event[]));
 }
 
 export async function getEventById(id: string): Promise<Event | null> {
   if (!supabase) {
     const e = seedEvents.find((e) => e.id === id) ?? null;
-    return e && !SCHOOL_RE.test(e.title) && !SCHOOL_RE.test(e.description ?? '') ? e : null;
+    return e && !EVENT_FILTER_RE.test(e.title) && !EVENT_FILTER_RE.test(e.description ?? '') ? e : null;
   }
   const { data, error } = await supabase
     .from('events')
@@ -56,6 +56,6 @@ export async function getEventById(id: string): Promise<Event | null> {
     .single();
   if (error || !data) return null;
   const e = data as Event;
-  if (SCHOOL_RE.test(e.title) || SCHOOL_RE.test(e.description ?? '')) return null;
+  if (EVENT_FILTER_RE.test(e.title) || EVENT_FILTER_RE.test(e.description ?? '')) return null;
   return e;
 }

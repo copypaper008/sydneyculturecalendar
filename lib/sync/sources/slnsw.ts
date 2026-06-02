@@ -216,10 +216,18 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
       continue
     }
 
+    const typeHint = (details.title + ' ' + details.description).toLowerCase()
+    let event_type: RawEvent['event_type'] = 'other'
+    if (typeHint.includes('exhibition') || typeHint.includes('display')) event_type = 'exhibition'
+    else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('forum') || typeHint.includes('panel')) event_type = 'talk'
+    else if (typeHint.includes('tour') || typeHint.includes('walk')) event_type = 'heritage'
+    else if (typeHint.includes('performance') || typeHint.includes('concert')) event_type = 'performance'
+    else if (typeHint.includes('festival')) event_type = 'festival'
+
     const event: RawEvent = {
       title: details.title,
       institution: 'State Library of NSW',
-      event_type: 'other',
+      event_type,
       start_date: details.start_date,
       end_date: details.end_date ?? undefined,
       start_time: details.start_time ?? undefined,

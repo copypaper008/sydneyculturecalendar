@@ -141,23 +141,38 @@ function EventGantt({ event }: { event: Event }) {
         </div>
 
         {/* Track + bar */}
-        <div style={{ position: 'relative', height: '40px', marginBottom: '10px' }}>
+        <div style={{ position: 'relative', height: '54px', marginBottom: '10px' }}>
           {/* Grey track */}
           <div style={{
             position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-            left: 0, right: 0, height: '5px',
-            background: '#e5e0d8', borderRadius: '3px',
+            left: 0, right: 0, height: '4px',
+            background: '#e5e0d8', borderRadius: '2px',
           }} />
-          {/* Event bar */}
+          {/* Event bar — styled like Year calendar */}
           <div style={{
             position: 'absolute', top: '50%', transform: 'translateY(-50%)',
             left: `${barLeft}%`, width: `${barWidth}%`,
-            height: '26px',
-            background: color,
+            height: '44px',
+            background: `${color}1f`,
+            border: `1.5px solid ${color}`,
             borderRadius: '6px',
-            boxShadow: `0 2px 8px ${color}55`,
             minWidth: '6px',
-          }} />
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            padding: '0 10px',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+          }}>
+            <p style={{ margin: 0, fontSize: '.78rem', fontWeight: 700, color, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {event.title}
+            </p>
+            {!isSingleDay && (
+              <p style={{ margin: '2px 0 0', fontSize: '.67rem', color: 'var(--colour-muted)', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {new Date(event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                {' – '}
+                {new Date(endISO + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            )}
+          </div>
           {/* Today line */}
           {todayPct !== null && (
             <div style={{

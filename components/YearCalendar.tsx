@@ -134,11 +134,12 @@ export default function YearCalendar({ events }: { events: Event[] }) {
     return Math.max(...years.filter(y => y <= new Date().getFullYear() + 1));
   }, [events]);
 
-  const [year, setYear]               = useState(initYear);
-  const [activeTypes, setActiveTypes] = useState<Set<EventType>>(new Set(ALL_TYPES));
-  const [tooltip, setTooltip]         = useState<Tooltip | null>(null);
-  const [todayPct, setTodayPct]       = useState<number | null>(null);
-  const [todayISO, setTodayISO]       = useState('');
+  const [year, setYear]                     = useState(initYear);
+  const [activeTypes, setActiveTypes]       = useState<Set<EventType>>(new Set(ALL_TYPES));
+  const [tooltip, setTooltip]               = useState<Tooltip | null>(null);
+  const [todayPct, setTodayPct]             = useState<number | null>(null);
+  const [todayISO, setTodayISO]             = useState('');
+  const [expanded, setExpanded]             = useState<Set<string>>(new Set());
 
   // Avoid SSR/client mismatch for date-dependent state
   useEffect(() => {
@@ -289,14 +290,24 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
           {/* Institution rows */}
           {institutions.map(([institution, instEvents], rowIdx) => {
-            const lanes        = assignLanes(instEvents, year);
-            const allLanes     = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
-            const numLanes     = Math.min(allLanes, MAX_LANES);
-            const visibleLanes = lanes.filter(l => l.lane < MAX_LANES);
-            const overflowCount = lanes.length - visibleLanes.length;
-            const rowH         = numLanes * TRACK_H + (numLanes - 1) * TRACK_GAP + ROW_PAD * 2 + (overflowCount > 0 ? 20 : 0);
-            const suburb       = instEvents[0]?.suburb;
-            const color        = avatarColour(institution);
+            const lanes         = assignLanes(instEvents, year);
+            const allLanes      = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
+            const isExpanded    = expanded.has(institution);
+            const numLanes      = isExpanded ? allLanes : Math.min(allLanes, MAX_LANES);
+            const visibleLanes  = isExpanded ? lanes : lanes.filter(l => l.lane < MAX_LANES);
+            const overflowCount = lanes.filter(l => l.lane >= MAX_LANES).length;
+            const rowH          = numLanes * TRACK_H + (numLanes - 1) * TRACK_GAP + ROW_PAD * 2 + (overflowCount > 0 || isExpanded ? 24 : 0);
+            const suburb        = instEvents[0]?.suburb;
+            const color         = avatarColour(institution);
+
+            function toggleExpand() {
+              setExpanded(prev => {
+                const next = new Set(prev);
+                if (next.has(institution)) next.delete(institution);
+                else next.add(institution);
+                return next;
+              });
+            }
 
             return (
               <div
@@ -401,15 +412,21 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                       </div>
                     );
                   })}
-                  {overflowCount > 0 && (
-                    <div style={{
-                      position: 'absolute', bottom: 4, left: 8,
-                      fontSize: '.65rem', fontWeight: 700, color: 'var(--colour-muted)',
-                      background: 'var(--colour-surface)', border: '1px solid var(--colour-line)',
-                      borderRadius: '999px', padding: '1px 8px',
-                    }}>
-                      +{overflowCount} more
-                    </div>
+                  {(overflowCount > 0 || isExpanded) && (
+                    <button
+                      onClick={toggleExpand}
+                      style={{
+                        position: 'absolute', bottom: 4, left: 8,
+                        fontSize: '.65rem', fontWeight: 700,
+                        color: 'var(--colour-primary-dark)',
+                        background: 'var(--colour-surface)',
+                        border: '1px solid var(--colour-primary)',
+                        borderRadius: '999px', padding: '2px 10px',
+                        cursor: 'pointer', lineHeight: 1.4,
+                      }}
+                    >
+                      {isExpanded ? 'Show less' : `+${overflowCount} more`}
+                    </button>
                   )}
                 </div>
               </div>
