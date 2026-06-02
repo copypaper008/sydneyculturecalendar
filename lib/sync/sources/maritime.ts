@@ -49,7 +49,8 @@ function extractEvents(data: any): any[] {
     if (Array.isArray(obj)) {
       for (const item of obj) {
         // Looks like an event if it has a title and a slug/url
-        if (item && typeof item === 'object' && (item.title || item.heading) && (item.slug || item.url || item.href)) {
+        if (item && typeof item === 'object' && (item.title || item.heading) &&
+            (typeof item.url === 'string' || typeof item.href === 'string' || item.slug)) {
           results.push(item)
         } else {
           walk(item, depth + 1)
@@ -71,8 +72,10 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
   const title = decodeEntities(String(item.title ?? item.heading ?? '').trim())
   if (!title) return null
 
-  // URL
-  const rawUrl = item.url ?? item.href ?? item.slug ?? ''
+  // URL — slug may be an array in Next.js catch-all routes
+  const rawSlug = item.slug
+  const slugStr = Array.isArray(rawSlug) ? rawSlug.join('/') : String(rawSlug ?? '')
+  const rawUrl = String(item.url ?? item.href ?? slugStr ?? '')
   const event_url = rawUrl.startsWith('http')
     ? rawUrl
     : rawUrl.startsWith('/')
@@ -85,8 +88,9 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
   let image_url: string | null = null
   const img = item.image ?? item.thumbnail ?? item.heroImage ?? item.featuredImage
   if (img) {
-    const src = typeof img === 'string' ? img : img.src ?? img.url ?? img.href ?? null
-    if (src) image_url = src.startsWith('http') ? src : `${BASE_URL}${src}`
+    const src = typeof img === 'string' ? img
+      : typeof img === 'object' ? String(img.src ?? img.url ?? img.href ?? '') : ''
+    if (src) image_url = src.startsWith('http') ? src : src ? `${BASE_URL}${src}` : null
   }
 
   // Dates
