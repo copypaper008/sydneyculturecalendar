@@ -187,23 +187,48 @@ export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
     return []
   }
 
-  // Parse __NEXT_DATA__ — Next.js embeds all server-side props here
+  // Parse __NEXT_DATA__ to get buildId — events are not in the initial payload,
+  // they're loaded via the _next/data API using the build ID
   const nextDataM = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
   if (!nextDataM) {
     console.error('[maritime] No __NEXT_DATA__ found')
     return []
   }
 
-  let pageData: unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let nextData: any
   try {
-    pageData = JSON.parse(nextDataM[1])
+    nextData = JSON.parse(nextDataM[1])
   } catch (err) {
     console.error('[maritime] Failed to parse __NEXT_DATA__:', err)
     return []
   }
 
-  const rawItems = extractEvents(pageData)
-  console.log(`[maritime] Found ${rawItems.length} candidate items in __NEXT_DATA__`)
+  const buildId = nextData?.buildId
+  if (!buildId) {
+    console.error('[maritime] No buildId in __NEXT_DATA__')
+    return []
+  }
+
+  console.log(`[maritime] buildId: ${buildId}`)
+
+  // Fetch the whats-on page data via Next.js data API
+  const dataUrl = `${BASE_URL}/_next/data/${buildId}/en/whats-on.json?slug=whats-on`
+  let pageApiData: unknown
+  try {
+    const dataRes = await fetchWithTimeout(dataUrl)
+    if (!dataRes.ok) {
+      console.error(`[maritime] Data API returned ${dataRes.status} for ${dataUrl}`)
+      return []
+    }
+    pageApiData = await dataRes.json()
+  } catch (err) {
+    console.error('[maritime] Failed to fetch data API:', err)
+    return []
+  }
+
+  const rawItems = extractEvents(pageApiData)
+  console.log(`[maritime] Found ${rawItems.length} candidate items from data API`)
 
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []

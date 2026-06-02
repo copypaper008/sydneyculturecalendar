@@ -54,17 +54,22 @@ function parseTime(raw: string): string | null {
   return `${String(hours).padStart(2, '0')}:${mins}`
 }
 
-/** Extract CSRF token from cookie header or HTML meta tag */
+/** Extract CSRF token from cookie header or HTML */
 function extractCsrf(html: string, cookieHeader: string): string {
   // Django sets csrftoken cookie
   const cookieM = cookieHeader.match(/csrftoken=([^;,\s]+)/)
   if (cookieM) return cookieM[1]
-  // Fallback: meta tag
-  const metaM = html.match(/<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/)
-  if (metaM) return metaM[1]
-  // Fallback: hidden input
-  const inputM = html.match(/csrfmiddlewaretoken['"]\s+value=['"]([^'"]+)/)
+  // Hidden input: <input ... name="csrfmiddlewaretoken" value="TOKEN" ...>
+  const inputM = html.match(/name="csrfmiddlewaretoken"[^>]*value="([^"]+)"/)
+    ?? html.match(/value="([^"]+)"[^>]*name="csrfmiddlewaretoken"/)
   if (inputM) return inputM[1]
+  // Meta tag
+  const metaM = html.match(/<meta[^>]+name="csrf-?token"[^>]+content="([^"]+)"/)
+    ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="csrf-?token"/)
+  if (metaM) return metaM[1]
+  // JS assignment: csrfToken = "..."
+  const jsM = html.match(/csrf[_-]?[Tt]oken['":\s=]+['"]([a-zA-Z0-9]{20,})['"]/)
+  if (jsM) return jsM[1]
   return ''
 }
 
