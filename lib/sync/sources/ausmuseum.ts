@@ -2,7 +2,7 @@ import { RawEvent } from '../types'
 
 const BASE_URL = 'https://australian.museum'
 const WHATS_ON_URL = `${BASE_URL}/visit/whats-on/`
-const FETCH_TIMEOUT_MS = 12_000
+const FETCH_TIMEOUT_MS = 15_000
 
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -11,10 +11,10 @@ const BROWSER_HEADERS = {
   'Referer': 'https://australian.museum/',
 }
 
-function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  return fetch(url, { signal: controller.signal, ...init }).finally(() => clearTimeout(timer))
+  return fetch(url, { signal: controller.signal, headers: BROWSER_HEADERS }).finally(() => clearTimeout(timer))
 }
 
 function stripTags(html: string): string {
@@ -27,168 +27,151 @@ function decodeEntities(str: string): string {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
 }
 
-const MONTHS: Record<string, string> = {
-  january: '01', february: '02', march: '03', april: '04',
-  may: '05', june: '06', july: '07', august: '08',
-  september: '09', october: '10', november: '11', december: '12',
-}
-
-function parseDate(raw: string): string | null {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) return raw.trim()
-  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/)
-  if (!m) return null
-  const day = m[1].padStart(2, '0')
-  const month = MONTHS[m[2].toLowerCase()]
-  if (!month) return null
-  return `${m[3]}-${month}-${day}`
-}
-
-function parseTime(raw: string): string | null {
-  const m = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i)
-  if (!m) return null
-  let hours = parseInt(m[1], 10)
-  const mins = m[2] ?? '00'
-  const period = m[3].toLowerCase()
-  if (period === 'pm' && hours !== 12) hours += 12
-  if (period === 'am' && hours === 12) hours = 0
-  return `${String(hours).padStart(2, '0')}:${mins}`
-}
-
-interface AusMuseumEvent {
-  title: string
-  url: string
-  image_url: string | null
-  start_date: string | null
-  end_date: string | null
-  event_type: string
-  is_free: boolean
-}
-
-function parseListingPage(html: string): AusMuseumEvent[] {
-  const events: AusMuseumEvent[] = []
+function extractEventPaths(html: string): string[] {
   const seen = new Set<string>()
-
-  // Links may be absolute or relative, e.g.:
-  //   href="https://australian.museum/visit/whats-on/bloodsuckers-..."
-  //   href="/visit/whats-on/bloodsuckers-..."
-  const linkRe = /href="((?:https?:\/\/australian\.museum)?\/visit\/whats-on\/([a-z0-9][a-z0-9\-]+))"/gi
+  const paths: string[] = []
+  // Match both absolute and relative href links to /visit/whats-on/anything
+  // Be liberal: allow upper/lower, hyphens, digits, slashes (sub-paths)
+  const re = /href="((?:https?:\/\/australian\.museum)?\/visit\/whats-on\/([^"/?#][^"?#]*))"/gi
   let m: RegExpExecArray | null
-  const urls: string[] = []
-  while ((m = linkRe.exec(html)) !== null) {
-    const rawHref = m[1]
-    const url = (rawHref.startsWith('http') ? rawHref : `${BASE_URL}${rawHref}`).split('?')[0].replace(/\/$/, '')
-    if (!seen.has(url)) { seen.add(url); urls.push(url) }
+  while ((m = re.exec(html)) !== null) {
+    const raw = m[1]
+    // normalise to absolute path without trailing slash
+    const path = (raw.startsWith('http') ? new URL(raw).pathname : raw).replace(/\/$/, '')
+    // Skip the whats-on root itself and any pagination/filter links
+    if (path === '/visit/whats-on' || path === '/visit/whats-on/') continue
+    if (!seen.has(path)) { seen.add(path); paths.push(path) }
   }
+  console.log(`[ausmuseum] Listing HTML: ${html.length} chars, found ${paths.length} candidate paths`)
+  // Also log a sample to help debug
+  if (paths.length === 0) {
+    const sample = html.slice(0, 2000)
+    console.log('[ausmuseum] First 2000 chars of listing HTML:', sample)
+  }
+  return paths
+}
 
-  console.log(`[ausmuseum] Page length: ${html.length} chars, found ${urls.length} event links`)
+async function scrapeEventPage(path: string, today: string): Promise<RawEvent | null> {
+  const url = `${BASE_URL}${path}`
+  try {
+    const res = await fetchWithTimeout(url)
+    if (!res.ok) { console.log(`[ausmuseum] ${path}: HTTP ${res.status}`); return null }
+    const html = await res.text()
 
-  for (const url of urls) {
-    // Find the context around this URL in the HTML
-    const idx = html.indexOf(`href="${url}"`)
-    if (idx === -1) continue
-    // Take a window of HTML around the link for parsing
-    const start = Math.max(0, idx - 600)
-    const end = Math.min(html.length, idx + 1200)
-    const context = html.slice(start, end)
+    // Title
+    const ogTitleM = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/)
+    const title = ogTitleM
+      ? decodeEntities(ogTitleM[1]).replace(/\s*[|\-–]\s*Australian Museum.*$/i, '').trim()
+      : decodeEntities(stripTags((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ?? [])[1] ?? '')).trim()
+    if (!title) { console.log(`[ausmuseum] ${path}: no title`); return null }
 
-    // Title from h3/h4
-    const titleM = context.match(/<h[2-5][^>]*class="[^"]*(?:card|title)[^"]*"[^>]*>([\s\S]*?)<\/h[2-5]>/)
-      ?? context.match(/<h[2-5][^>]*>([\s\S]*?)<\/h[2-5]>/)
-    if (!titleM) continue
-    const title = decodeEntities(stripTags(titleM[1])).trim()
-    if (!title || title.length < 3) continue
+    // Description
+    const descM = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const description = descM ? decodeEntities(descM[1]) : ''
 
-    // Image from background-image style
-    let image_url: string | null = null
-    const bgM = context.match(/background-image\s*:\s*url\(['"]?([^'")\s]+)['"]?\)/)
-    if (bgM) image_url = bgM[1].startsWith('http') ? bgM[1] : `${BASE_URL}${bgM[1]}`
-    if (!image_url) {
-      const imgM = context.match(/<img[^>]+src="([^"]+)"/)
-      if (imgM) image_url = imgM[1].startsWith('http') ? imgM[1] : `${BASE_URL}${imgM[1]}`
-    }
+    // Image
+    const imgM = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
+    const image_url = imgM ? (imgM[1].startsWith('http') ? imgM[1] : `${BASE_URL}${imgM[1]}`) : null
 
-    // Dates
+    // Dates from JSON-LD
     let start_date: string | null = null
     let end_date: string | null = null
-    const dateRangeM = context.match(/(\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\s*[–\-—]\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/)
-    if (dateRangeM) {
-      const endParsed = parseDate(dateRangeM[2])
-      const year = (dateRangeM[2].match(/\d{4}/) ?? [])[0] ?? ''
-      const startRaw = /\d{4}/.test(dateRangeM[1]) ? dateRangeM[1] : `${dateRangeM[1]} ${year}`
-      start_date = parseDate(startRaw)
-      end_date = endParsed !== start_date ? endParsed : null
-    } else {
-      const singleM = context.match(/(\d{1,2}\s+[A-Za-z]+\s+\d{4})/)
-      if (singleM) start_date = parseDate(singleM[1])
+    const jsonLdBlocks = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+    for (const block of jsonLdBlocks) {
+      const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
+      try {
+        const d = JSON.parse(inner)
+        const items = Array.isArray(d) ? d : [d]
+        for (const item of items) {
+          if (item.startDate && !start_date) start_date = item.startDate.slice(0, 10)
+          if (item.endDate && !end_date) end_date = item.endDate.slice(0, 10)
+        }
+      } catch { /* ignore */ }
+      if (start_date) break
     }
 
-    // Event type from content-tag
-    const typeM = context.match(/class="[^"]*content-tag[^"]*"[^>]*>\s*([^<]{2,30})\s*</)
-    const typeText = typeM ? typeM[1].toLowerCase().trim() : ''
+    // Fallback: look for date patterns in visible text
+    if (!start_date) {
+      const MONTHS: Record<string, string> = {
+        january: '01', february: '02', march: '03', april: '04',
+        may: '05', june: '06', july: '07', august: '08',
+        september: '09', october: '10', november: '11', december: '12',
+      }
+      const dateM = html.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/)
+      if (dateM) {
+        const month = MONTHS[dateM[2].toLowerCase()]
+        if (month) start_date = `${dateM[3]}-${month}-${dateM[1].padStart(2, '0')}`
+      }
+    }
+
+    // If no date, allow if page says "now on" / "permanent"
+    const isOngoing = /\b(now on|now open|permanent collection|ongoing)\b/i.test(html)
+    if (!start_date && !isOngoing) { console.log(`[ausmuseum] ${path}: no date`); return null }
+    if (end_date && end_date < today) { console.log(`[ausmuseum] ${path}: past`); return null }
+
+    const slug = path.split('/').filter(Boolean).pop()!
+    const typeHint = html.toLowerCase()
     let event_type = 'other'
-    if (typeText.includes('exhibition')) event_type = 'exhibition'
-    else if (typeText.includes('talk') || typeText.includes('lecture')) event_type = 'talk'
-    else if (typeText.includes('tour')) event_type = 'heritage'
-    else if (typeText.includes('performance')) event_type = 'performance'
-    else if (typeText.includes('festival')) event_type = 'festival'
+    if (typeHint.includes('exhibition')) event_type = 'exhibition'
+    else if (typeHint.includes('talk') || typeHint.includes('lecture')) event_type = 'talk'
+    else if (typeHint.includes('tour')) event_type = 'heritage'
+    else if (typeHint.includes('performance')) event_type = 'performance'
+    else if (typeHint.includes('festival')) event_type = 'festival'
 
-    const is_free = /\bfree\b/i.test(context) && !/charges apply|buy ticket|ticketed/i.test(context)
+    const is_free = /\bfree\b/i.test(html) && !/charges apply|buy ticket|ticketed/i.test(html)
 
-    events.push({ title, url, image_url, start_date, end_date, event_type, is_free })
+    return {
+      title,
+      institution: 'Australian Museum',
+      event_type,
+      start_date: start_date ?? today,
+      end_date: end_date ?? undefined,
+      venue: 'Australian Museum',
+      suburb: 'Sydney CBD',
+      description: description || undefined,
+      image_url: image_url ?? undefined,
+      event_url: url,
+      is_free,
+      tags: ['australian-museum', is_free ? 'free' : 'ticketed'],
+      source: 'ausmuseum',
+      source_id: slug,
+    }
+  } catch (err) {
+    console.log(`[ausmuseum] ${path}: fetch error ${err}`)
+    return null
   }
-
-  return events
 }
 
 export async function fetchAustralianMuseumEvents(): Promise<RawEvent[]> {
   let html: string
   try {
-    const res = await fetchWithTimeout(WHATS_ON_URL, { headers: BROWSER_HEADERS })
+    const res = await fetchWithTimeout(WHATS_ON_URL)
     if (!res.ok) {
-      console.error(`[ausmuseum] Page returned ${res.status}`)
+      console.error(`[ausmuseum] Listing page returned ${res.status}`)
       return []
     }
     html = await res.text()
-    console.log(`[ausmuseum] Fetched listing page (${html.length} chars)`)
   } catch (err) {
     console.error('[ausmuseum] Failed to fetch listing page:', err)
     return []
   }
 
-  const parsed = parseListingPage(html)
+  const paths = extractEventPaths(html)
+  if (paths.length === 0) {
+    console.error('[ausmuseum] No event paths found in listing page')
+    return []
+  }
+
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
+  const seen = new Set<string>()
 
-  for (const e of parsed) {
-    // Skip if no date and not "now open"
-    if (!e.start_date && !e.end_date) {
-      const nowOpen = /now open/i.test(html.slice(
-        Math.max(0, html.indexOf(e.url) - 500),
-        html.indexOf(e.url) + 500
-      ))
-      if (!nowOpen) { console.log(`[ausmuseum] Skipping "${e.title}": no date`); continue }
-    }
-    if (e.end_date && e.end_date < today) {
-      console.log(`[ausmuseum] Skipping "${e.title}": past`)
-      continue
-    }
-
-    const slug = e.url.split('/').filter(Boolean).pop() ?? e.title.toLowerCase().replace(/\s+/g, '-')
-    events.push({
-      title: e.title,
-      institution: 'Australian Museum',
-      event_type: e.event_type,
-      start_date: e.start_date ?? today,
-      end_date: e.end_date ?? undefined,
-      venue: 'Australian Museum',
-      suburb: 'Sydney CBD',
-      image_url: e.image_url ?? undefined,
-      event_url: e.url,
-      is_free: e.is_free,
-      tags: ['australian-museum', e.is_free ? 'free' : 'ticketed'],
-      source: 'ausmuseum',
-      source_id: slug,
-    })
+  for (const path of paths.slice(0, 30)) {
+    const slug = path.split('/').filter(Boolean).pop()!
+    if (seen.has(slug)) continue
+    seen.add(slug)
+    const event = await scrapeEventPage(path, today)
+    if (event) events.push(event)
   }
 
   console.log(`[ausmuseum] Returning ${events.length} events`)

@@ -177,14 +177,19 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
 async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
   const seen = new Set<string>()
   const paths: string[] = []
-  // Links may be /en/whats-on/... or /whats-on/...
-  const linkRe = /href="(\/(?:en\/)?whats-on\/[a-z0-9][^"?#]+)"/gi
+  // Links may be /en/whats-on/... or /whats-on/... — be liberal with slug characters
+  const linkRe = /href="(\/(?:en\/)?whats-on\/[^"?#\s][^"?#]*)"/gi
   let m: RegExpExecArray | null
   while ((m = linkRe.exec(html)) !== null) {
     const path = m[1].replace(/\/$/, '')
+    // Skip the whats-on root and pagination
+    if (/^\/(?:en\/)?whats-on\/?$/.test(path)) continue
     if (!seen.has(path)) { seen.add(path); paths.push(path) }
   }
   console.log(`[maritime] HTML fallback: page length ${html.length}, found ${paths.length} event paths`)
+  if (paths.length === 0) {
+    console.log('[maritime] Sample HTML (first 2000 chars):', html.slice(0, 2000))
+  }
 
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
@@ -210,15 +215,38 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
       // Dates from JSON-LD or text
       let start_date: string | null = null
       let end_date: string | null = null
-      const jsonLdM = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i)
-      if (jsonLdM) {
+      const jsonLdBlocks = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+      for (const block of jsonLdBlocks) {
+        const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
         try {
-          const d = JSON.parse(jsonLdM[1])
-          if (d.startDate) start_date = d.startDate.slice(0, 10)
-          if (d.endDate) end_date = d.endDate.slice(0, 10)
+          const d = JSON.parse(inner)
+          const items = Array.isArray(d) ? d : [d]
+          for (const item of items) {
+            if (item.startDate && !start_date) start_date = item.startDate.slice(0, 10)
+            if (item.endDate && !end_date) end_date = item.endDate.slice(0, 10)
+          }
         } catch { /* ignore */ }
+        if (start_date) break
       }
-      if (!start_date) { console.log(`[maritime] Skipping ${slug}: no date`); continue }
+      // Fallback: look for ISO dates or human-readable dates in HTML
+      if (!start_date) {
+        const isoM = pageHtml.match(/\b(\d{4}-\d{2}-\d{2})\b/)
+        if (isoM) start_date = isoM[1]
+      }
+      if (!start_date) {
+        const MONTHS: Record<string, string> = {
+          january: '01', february: '02', march: '03', april: '04',
+          may: '05', june: '06', july: '07', august: '08',
+          september: '09', october: '10', november: '11', december: '12',
+        }
+        const dateM = pageHtml.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/)
+        if (dateM) {
+          const month = MONTHS[dateM[2].toLowerCase()]
+          if (month) start_date = `${dateM[3]}-${month}-${dateM[1].padStart(2, '0')}`
+        }
+      }
+      const isOngoing = /\b(now on|now open|permanent|ongoing)\b/i.test(pageHtml)
+      if (!start_date && !isOngoing) { console.log(`[maritime] Skipping ${slug}: no date`); continue }
       if (end_date && end_date < today) { console.log(`[maritime] Skipping ${slug}: past`); continue }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
