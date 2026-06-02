@@ -7,6 +7,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/events', label: 'Events' },
   { href: '/calendar', label: 'Calendar' },
+  { href: '/year', label: 'Year' },
 ];
 
 export default function NavBar() {
