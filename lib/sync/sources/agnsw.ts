@@ -134,7 +134,31 @@ async function scrapeEventPage(url: string): Promise<{ description: string; imag
       ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
       ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
       ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
-    const description = descM ? decodeEntities(descM[1]) : ''
+      ?? html.match(/<meta[^>]+name="twitter:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="twitter:description"/)
+    let description = descM ? decodeEntities(descM[1]) : ''
+
+    // JSON-LD description fallback
+    if (!description) {
+      const jsonLdBlocks = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+      for (const block of jsonLdBlocks) {
+        const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
+        try {
+          const d = JSON.parse(inner)
+          const items = Array.isArray(d) ? d : [d]
+          for (const item of items) {
+            if (item.description) { description = decodeEntities(String(item.description)).trim(); break }
+          }
+        } catch { /* ignore */ }
+        if (description) break
+      }
+    }
+
+    // First substantial paragraph fallback
+    if (!description) {
+      const pM = html.match(/<p[^>]*>([\s\S]{30,600}?)<\/p>/)
+      if (pM) description = decodeEntities(stripTags(pM[1])).trim()
+    }
 
     let image_url: string | null = null
     const ogImgM = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
