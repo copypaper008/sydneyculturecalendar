@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, ExternalLink, Ticket } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Ticket, CalendarDays } from 'lucide-react';
 import { Event } from '@/lib/types';
 import EventCard from './EventCard';
 
@@ -17,6 +17,166 @@ function formatTime(t?: string): string | null {
   const ampm = h >= 12 ? 'pm' : 'am';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
 }
+
+// ─── Mini calendar ───────────────────────────────────────────────────────────
+
+const CAL_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const CAL_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function getMonthSpan(startISO: string, endISO: string): { year: number; month: number }[] {
+  const result: { year: number; month: number }[] = [];
+  let y = parseInt(startISO.slice(0, 4), 10);
+  let m = parseInt(startISO.slice(5, 7), 10) - 1;
+  const endY = parseInt(endISO.slice(0, 4), 10);
+  const endM = parseInt(endISO.slice(5, 7), 10) - 1;
+  while (y < endY || (y === endY && m <= endM)) {
+    result.push({ year: y, month: m });
+    if (++m > 11) { m = 0; y++; }
+  }
+  return result;
+}
+
+function MonthGrid({ year, month, startISO, endISO, todayISO }: {
+  year: number; month: number; startISO: string; endISO: string; todayISO: string;
+}) {
+  const firstDOW = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = Array(firstDOW).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <div style={{ width: '224px', flexShrink: 0 }}>
+      <p style={{ textAlign: 'center', fontWeight: 700, fontSize: '.85rem', margin: '0 0 10px', color: 'var(--colour-ink)' }}>
+        {CAL_MONTHS[month]} {year}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 32px)', rowGap: '2px' }}>
+        {CAL_DAYS.map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: '.65rem', fontWeight: 700, color: 'var(--colour-muted)', padding: '2px 0', letterSpacing: '.05em' }}>
+            {d}
+          </div>
+        ))}
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`b${idx}`} style={{ height: '32px' }} />;
+          const mm = String(month + 1).padStart(2, '0');
+          const dd = String(day).padStart(2, '0');
+          const iso = `${year}-${mm}-${dd}`;
+          const inRange = iso >= startISO && iso <= endISO;
+          const isEndpoint = iso === startISO || iso === endISO;
+          const isToday = iso === todayISO;
+          return (
+            <div key={`d${idx}`} style={{
+              height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: inRange && !isEndpoint ? 'var(--colour-primary-soft)' : 'transparent',
+            }}>
+              <div style={{
+                width: '28px', height: '28px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%',
+                background: isEndpoint ? 'var(--colour-primary)' : 'transparent',
+                color: isEndpoint ? 'white' : inRange ? 'var(--colour-primary-dark)' : 'var(--colour-ink)',
+                fontSize: '.8rem',
+                fontWeight: inRange ? 600 : 400,
+                outline: isToday && !isEndpoint ? '2px solid var(--colour-primary)' : undefined,
+                outlineOffset: '2px',
+              }}>
+                {day}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EventDateCalendar({ event }: { event: Event }) {
+  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const endISO = event.end_date || event.start_date;
+
+  if (isOngoing) {
+    return (
+      <section style={{ marginTop: 'var(--space-6)' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: 'var(--space-4)', color: 'var(--colour-ink)' }}>
+          When
+        </h2>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
+          background: 'var(--colour-primary-soft)',
+          border: '1px solid var(--colour-primary)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-5)',
+        }}>
+          <div style={{
+            flexShrink: 0, width: '48px', height: '48px',
+            background: 'var(--colour-primary)', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CalendarDays size={22} color="white" />
+          </div>
+          <div>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--colour-primary-dark)', letterSpacing: '-.01em' }}>
+              Ongoing
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: '.88rem', color: 'var(--colour-muted)', lineHeight: 1.5 }}>
+              This event runs continuously — visit anytime and check the official website for current opening hours.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const months = getMonthSpan(event.start_date, endISO);
+  const MAX = 3;
+  const truncated = months.length > MAX;
+  const displayMonths = truncated
+    ? [months[0], months[months.length - 1]]
+    : months;
+
+  return (
+    <section style={{ marginTop: 'var(--space-6)' }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: 'var(--space-4)', color: 'var(--colour-ink)' }}>
+        When
+      </h2>
+      <div style={{
+        background: 'var(--colour-surface)', border: '1px solid var(--colour-line)',
+        borderRadius: 'var(--radius-md)', padding: 'var(--space-5)',
+        boxShadow: 'var(--shadow-card)',
+      }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-6)', alignItems: 'flex-start' }}>
+          {displayMonths.map(({ year, month }, idx) => (
+            <div key={`${year}-${month}`} style={{ display: 'contents' }}>
+              {truncated && idx === 1 && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--colour-muted)', gap: '4px', paddingTop: '28px',
+                  fontSize: '.75rem', fontWeight: 600, letterSpacing: '.03em',
+                }}>
+                  <span>·</span><span>·</span><span>·</span>
+                  <span style={{ fontSize: '.7rem', whiteSpace: 'nowrap' }}>{months.length} months</span>
+                </div>
+              )}
+              <MonthGrid year={year} month={month} startISO={event.start_date} endISO={endISO} todayISO={todayISO} />
+            </div>
+          ))}
+        </div>
+        {months.length > 1 && (
+          <p style={{ margin: 'var(--space-4) 0 0', fontSize: '.78rem', color: 'var(--colour-muted)', borderTop: '1px solid var(--colour-line)', paddingTop: 'var(--space-3)' }}>
+            {formatDateRange(event.start_date, event.end_date)}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function EventDetail({ event, relatedEvents }: { event: Event; relatedEvents?: Event[] }) {
   const startTime = formatTime(event.start_time);
@@ -141,6 +301,8 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
           </div>
         </div>
       </div>
+
+      <EventDateCalendar event={event} />
 
       {/* Related events */}
       {relatedEvents && relatedEvents.length > 0 && (
