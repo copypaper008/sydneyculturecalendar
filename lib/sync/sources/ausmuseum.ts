@@ -36,18 +36,14 @@ function extractEventPaths(html: string): string[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
     const raw = m[1]
-    // normalise to absolute path without trailing slash
-    const path = (raw.startsWith('http') ? new URL(raw).pathname : raw).replace(/\/$/, '')
-    // Skip the whats-on root itself and any pagination/filter links
+    let path: string
+    try {
+      path = (raw.startsWith('http') ? new URL(raw).pathname : raw).replace(/\/$/, '')
+    } catch { continue }
     if (path === '/visit/whats-on' || path === '/visit/whats-on/') continue
     if (!seen.has(path)) { seen.add(path); paths.push(path) }
   }
-  console.log(`[ausmuseum] Listing HTML: ${html.length} chars, found ${paths.length} candidate paths`)
-  // Also log a sample to help debug
-  if (paths.length === 0) {
-    const sample = html.slice(0, 2000)
-    console.log('[ausmuseum] First 2000 chars of listing HTML:', sample)
-  }
+  console.log(`[ausmuseum] Listing page: ${html.length} chars, ${paths.length} paths`)
   return paths
 }
 

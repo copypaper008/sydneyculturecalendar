@@ -133,13 +133,106 @@ async function scrapeExhibitionPage(url: string): Promise<{ image_url: string | 
   }
 }
 
+async function tryAlternativeSources(): Promise<RawEvent[]> {
+  const today = new Date().toISOString().split('T')[0]
+  // Try WordPress REST API — often accessible even when main site blocks cloud IPs
+  const apiUrls = [
+    `${BASE_URL}/wp-json/wp/v2/posts?per_page=20&categories=exhibitions&_fields=id,title,slug,link,date,excerpt,content`,
+    `${BASE_URL}/wp-json/wp/v2/posts?per_page=20&_fields=id,title,slug,link,date,excerpt`,
+    `${BASE_URL}/wp-json/wp/v2/exhibition?per_page=20&_fields=id,title,slug,link,date,excerpt`,
+  ]
+  for (const url of apiUrls) {
+    try {
+      const res = await fetchWithTimeout(url)
+      console.log(`[whiterabbit] WP API ${url} → ${res.status}`)
+      if (!res.ok) continue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const posts: any[] = await res.json()
+      if (!Array.isArray(posts) || posts.length === 0) continue
+      const events: RawEvent[] = []
+      for (const post of posts) {
+        const title = decodeEntities(stripTags(post.title?.rendered ?? '')).trim()
+        if (!title) continue
+        const slug = post.slug ?? title.toLowerCase().replace(/\s+/g, '-')
+        const postUrl = post.link ?? `${BASE_URL}/exhibitions/${slug}/`
+        // Dates from post date or excerpt text
+        const rawDate = String(post.date ?? '').slice(0, 10)
+        const start_date = rawDate >= today ? rawDate : today
+        events.push({
+          title,
+          institution: 'White Rabbit Gallery',
+          event_type: 'exhibition',
+          start_date,
+          venue: 'White Rabbit Gallery',
+          suburb: 'Chippendale',
+          description: decodeEntities(stripTags(post.excerpt?.rendered ?? '')).trim() || undefined,
+          event_url: postUrl,
+          is_free: true,
+          tags: ['white-rabbit', 'free', 'contemporary-art', 'chinese-art'],
+          source: 'whiterabbit',
+          source_id: slug,
+        })
+      }
+      if (events.length > 0) {
+        console.log(`[whiterabbit] WP API returned ${events.length} posts`)
+        return events
+      }
+    } catch (err) {
+      console.log(`[whiterabbit] WP API error: ${err}`)
+    }
+  }
+
+  // Try RSS feed
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/exhibitions/feed/`)
+    console.log(`[whiterabbit] RSS feed → ${res.status}`)
+    if (res.ok) {
+      const xml = await res.text()
+      const events: RawEvent[] = []
+      const itemRe = /<item>([\s\S]*?)<\/item>/gi
+      let im: RegExpExecArray | null
+      while ((im = itemRe.exec(xml)) !== null) {
+        const item = im[1]
+        const titleM = item.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/) ?? item.match(/<title>([^<]+)<\/title>/)
+        const title = titleM ? decodeEntities(titleM[1]).trim() : ''
+        if (!title) continue
+        const linkM = item.match(/<link>([^<]+)<\/link>/)
+        const link = linkM ? linkM[1].trim() : ''
+        const slug = link.split('/').filter(Boolean).pop() ?? title.toLowerCase().replace(/\s+/g, '-')
+        const pubDateM = item.match(/<pubDate>([^<]+)<\/pubDate>/)
+        const start_date = pubDateM ? new Date(pubDateM[1]).toISOString().slice(0, 10) : today
+        if (start_date < today) continue
+        events.push({
+          title,
+          institution: 'White Rabbit Gallery',
+          event_type: 'exhibition',
+          start_date,
+          venue: 'White Rabbit Gallery',
+          suburb: 'Chippendale',
+          event_url: link || `${EXHIBITIONS_URL}${slug}/`,
+          is_free: true,
+          tags: ['white-rabbit', 'free', 'contemporary-art', 'chinese-art'],
+          source: 'whiterabbit',
+          source_id: slug,
+        })
+      }
+      if (events.length > 0) {
+        console.log(`[whiterabbit] RSS returned ${events.length} items`)
+        return events
+      }
+    }
+  } catch { /* skip */ }
+
+  return []
+}
+
 export async function fetchWhiteRabbitEvents(): Promise<RawEvent[]> {
   let html: string
   try {
     const res = await fetchWithTimeout(EXHIBITIONS_URL)
     if (!res.ok) {
-      console.error(`[whiterabbit] Listing page returned ${res.status}`)
-      return []
+      console.error(`[whiterabbit] Listing page returned ${res.status} — trying alternative sources`)
+      return tryAlternativeSources()
     }
     html = await res.text()
   } catch (err) {
