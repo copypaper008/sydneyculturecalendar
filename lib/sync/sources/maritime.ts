@@ -312,26 +312,44 @@ export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
   }
 
   console.log(`[maritime] buildId: ${buildId}`)
+  // Log top-level keys of __NEXT_DATA__ to understand data structure
+  const ndKeys = Object.keys(nextData?.props ?? {})
+  console.log(`[maritime] __NEXT_DATA__ props keys: ${ndKeys.join(', ')}`)
 
-  // Fetch the whats-on page data via Next.js data API
-  const dataUrl = `${BASE_URL}/_next/data/${buildId}/en/whats-on.json?slug=whats-on`
-  let pageApiData: unknown
-  try {
-    const dataRes = await fetchWithTimeout(dataUrl)
-    if (!dataRes.ok) {
-      console.error(`[maritime] Data API returned ${dataRes.status} — falling back to HTML link parsing`)
-      return parseHtmlLinks(html)
+  // Try several _next/data endpoint patterns the site might use
+  const candidateUrls = [
+    `${BASE_URL}/_next/data/${buildId}/en/whats-on.json`,
+    `${BASE_URL}/_next/data/${buildId}/en/whats-on.json?slug=whats-on`,
+    `${BASE_URL}/_next/data/${buildId}/en/search.json`,
+    `${BASE_URL}/_next/data/${buildId}/en/search.json?query=`,
+  ]
+
+  let pageApiData: unknown = null
+  for (const dataUrl of candidateUrls) {
+    try {
+      const dataRes = await fetchWithTimeout(dataUrl)
+      console.log(`[maritime] ${dataUrl} → ${dataRes.status}`)
+      if (dataRes.ok) {
+        pageApiData = await dataRes.json()
+        break
+      }
+    } catch (err) {
+      console.log(`[maritime] ${dataUrl} error: ${err}`)
     }
-    pageApiData = await dataRes.json()
-  } catch (err) {
-    console.error('[maritime] Failed to fetch data API:', err)
-    return []
+  }
+
+  if (!pageApiData) {
+    console.log('[maritime] All data API attempts failed, falling back to HTML parsing')
+    return parseHtmlLinks(html)
   }
 
   const rawItems = extractEvents(pageApiData)
   console.log(`[maritime] Found ${rawItems.length} candidate items from data API`)
 
   if (rawItems.length === 0) {
+    // Log a sample of the API response to understand its structure
+    const sample = JSON.stringify(pageApiData).slice(0, 500)
+    console.log(`[maritime] Data API response sample: ${sample}`)
     console.log('[maritime] Data API returned no items, falling back to HTML parsing')
     return parseHtmlLinks(html)
   }
