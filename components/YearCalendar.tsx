@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Calendar, Tag, Lightbulb } from 'lucide-react';
 import { Event, EventType } from '@/lib/types';
@@ -134,9 +134,15 @@ export default function YearCalendar({ events }: { events: Event[] }) {
   const [activeTypes, setActiveTypes] = useState<Set<EventType>>(new Set(ALL_TYPES));
   const [tooltip, setTooltip]         = useState<Tooltip | null>(null);
   const [todayPct, setTodayPct]       = useState<number | null>(null);
+  const [todayISO, setTodayISO]       = useState('');
 
-  // Avoid SSR/client hydration mismatch for today line
-  useEffect(() => { setTodayPct(todayLeft(year)); }, [year]);
+  // Avoid SSR/client mismatch for date-dependent state
+  useEffect(() => {
+    const d   = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    setTodayISO(iso);
+    setTodayPct(todayLeft(year));
+  }, [year]);
 
   const months = useMemo(() => monthPositions(year), [year]);
 
@@ -144,8 +150,15 @@ export default function YearCalendar({ events }: { events: Event[] }) {
   const yearEvents = useMemo(() => events.filter(e => {
     const sY = parseInt(e.start_date.slice(0, 4));
     const eY = e.end_date ? parseInt(e.end_date.slice(0, 4)) : sY;
-    return sY <= year && eY >= year && activeTypes.has(e.event_type);
-  }), [events, year, activeTypes]);
+    if (sY > year || eY < year) return false;
+    if (!activeTypes.has(e.event_type)) return false;
+    // In the current calendar year, hide events that have already ended
+    if (todayISO && year === parseInt(todayISO.slice(0, 4))) {
+      const isOngoing = Array.isArray(e.tags) && e.tags.includes('ongoing');
+      if (!isOngoing && (e.end_date || e.start_date) < todayISO) return false;
+    }
+    return true;
+  }), [events, year, activeTypes, todayISO]);
 
   const institutions = useMemo(() => {
     const map = new Map<string, Event[]>();
@@ -283,27 +296,35 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                 key={institution}
                 style={{ display: 'flex', borderBottom: rowIdx < institutions.length - 1 ? '1px solid var(--colour-line)' : 'none' }}
               >
-                {/* Institution cell */}
-                <div style={{
-                  width: INST_W, flexShrink: 0, minHeight: rowH,
-                  padding: '14px 12px 14px 16px',
-                  display: 'flex', alignItems: 'flex-start', gap: '10px',
-                  borderRight: '1px solid var(--colour-line)',
-                }}>
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: color, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '.65rem', fontWeight: 800, letterSpacing: '.03em' }}>
-                    {initials(institution)}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: '.78rem', fontWeight: 700, color: 'var(--colour-ink)', lineHeight: 1.25, wordBreak: 'break-word' }}>
-                      {institution}
-                    </p>
-                    {suburb && (
-                      <p style={{ margin: '3px 0 0', fontSize: '.7rem', color: 'var(--colour-muted)' }}>
-                        {suburb}
+                {/* Institution cell — links to institution page */}
+                <Link
+                  href={`/institutions/${encodeURIComponent(institution)}`}
+                  style={{ display: 'flex', textDecoration: 'none' }}
+                >
+                  <div style={{
+                    width: INST_W, flexShrink: 0, minHeight: rowH,
+                    padding: '14px 12px 14px 16px',
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    borderRight: '1px solid var(--colour-line)',
+                  }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--colour-surface-soft)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                  >
+                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: color, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '.65rem', fontWeight: 800, letterSpacing: '.03em' }}>
+                      {initials(institution)}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: '.78rem', fontWeight: 700, color: 'var(--colour-primary-dark)', lineHeight: 1.25, wordBreak: 'break-word' }}>
+                        {institution}
                       </p>
-                    )}
+                      {suburb && (
+                        <p style={{ margin: '3px 0 0', fontSize: '.7rem', color: 'var(--colour-muted)' }}>
+                          {suburb}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Link>
 
                 {/* Timeline area */}
                 <div style={{ flex: 1, position: 'relative', height: rowH }}>
@@ -328,10 +349,15 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
                   {/* Event bars */}
                   {lanes.map(({ event, lane, bar }) => {
-                    const top   = ROW_PAD + lane * (TRACK_H + TRACK_GAP);
-                    const color = EVENT_COLOURS[event.event_type];
-                    const wide  = bar.width > 7;
-                    const medium = bar.width > 3;
+                    const top      = ROW_PAD + lane * (TRACK_H + TRACK_GAP);
+                    const color    = EVENT_COLOURS[event.event_type];
+                    const wide     = bar.width > 7;
+                    const medium   = bar.width > 3;
+                    const ongoing  = Array.isArray(event.tags) && event.tags.includes('ongoing');
+                    // Ongoing events get diagonal stripes; dated events get a flat tint
+                    const barBg    = ongoing
+                      ? `repeating-linear-gradient(45deg, ${color}2a 0px, ${color}2a 5px, ${color}0c 5px, ${color}0c 10px)`
+                      : `${color}1f`;
 
                     return (
                       <div
@@ -346,7 +372,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                         <Link href={`/events/${event.id}`} style={{ display: 'block', height: '100%' }}>
                           <div style={{
                             height: '100%', borderRadius: 6,
-                            background: `${color}1f`,
+                            background: barBg,
                             border: `1.5px solid ${color}`,
                             padding: '3px 7px',
                             overflow: 'hidden',
@@ -360,7 +386,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                             )}
                             {wide && (
                               <p style={{ margin: '1px 0 0', fontSize: '.6rem', color: 'var(--colour-muted)', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {fmtDate(event)}
+                                {ongoing ? 'Ongoing' : fmtDate(event)}
                               </p>
                             )}
                           </div>
@@ -414,7 +440,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>
               <Calendar size={12} style={{ flexShrink: 0 }} />
-              {fmtDate(tooltip.event)}
+              {Array.isArray(tooltip.event.tags) && tooltip.event.tags.includes('ongoing') ? 'Ongoing' : fmtDate(tooltip.event)}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>
               <Tag size={12} style={{ flexShrink: 0 }} />
