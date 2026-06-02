@@ -2,13 +2,13 @@ import { RawEvent } from '../types'
 
 const BASE_URL = 'https://australian.museum'
 const WHATS_ON_URL = `${BASE_URL}/visit/whats-on/`
-const API_URL = `${BASE_URL}/whatson-api/events/`
 const FETCH_TIMEOUT_MS = 12_000
 
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-AU,en;q=0.9',
+  'Referer': 'https://australian.museum/',
 }
 
 function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
@@ -54,90 +54,49 @@ function parseTime(raw: string): string | null {
   return `${String(hours).padStart(2, '0')}:${mins}`
 }
 
-/** Extract CSRF token from cookie header or HTML */
-function extractCsrf(html: string, cookieHeader: string): string {
-  // Django sets csrftoken cookie
-  const cookieM = cookieHeader.match(/csrftoken=([^;,\s]+)/)
-  if (cookieM) return cookieM[1]
-  // Hidden input: <input ... name="csrfmiddlewaretoken" value="TOKEN" ...>
-  const inputM = html.match(/name="csrfmiddlewaretoken"[^>]*value="([^"]+)"/)
-    ?? html.match(/value="([^"]+)"[^>]*name="csrfmiddlewaretoken"/)
-  if (inputM) return inputM[1]
-  // Meta tag
-  const metaM = html.match(/<meta[^>]+name="csrf-?token"[^>]+content="([^"]+)"/)
-    ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="csrf-?token"/)
-  if (metaM) return metaM[1]
-  // JS assignment: csrfToken = "..."
-  const jsM = html.match(/csrf[_-]?[Tt]oken['":\s=]+['"]([a-zA-Z0-9]{20,})['"]/)
-  if (jsM) return jsM[1]
-  return ''
-}
-
 interface AusMuseumEvent {
   title: string
   url: string
   image_url: string | null
   start_date: string | null
   end_date: string | null
-  start_time: string | null
-  end_time: string | null
   event_type: string
   is_free: boolean
 }
 
-/** Parse events from the API response HTML or JSON */
-function parseApiResponse(body: string): AusMuseumEvent[] {
+function parseListingPage(html: string): AusMuseumEvent[] {
   const events: AusMuseumEvent[] = []
+  const seen = new Set<string>()
 
-  // Try JSON first
-  try {
-    const json = JSON.parse(body)
-    const items = json.events ?? json.results ?? json.data ?? (Array.isArray(json) ? json : null)
-    if (items && Array.isArray(items)) {
-      for (const item of items) {
-        const title = item.title ?? item.name ?? ''
-        if (!title) continue
-        const url = item.url ?? item.link ?? ''
-        const fullUrl = url.startsWith('http') ? url : `${BASE_URL}${url}`
-        const image_url = item.image ?? item.image_url ?? item.thumbnail ?? null
-        const start_date = item.start_date ? parseDate(item.start_date) : null
-        const end_date = item.end_date ? parseDate(item.end_date) : null
-        const is_free = /free/i.test(item.price ?? item.cost ?? item.ticket_type ?? '') ||
-          item.is_free === true || item.free === true
-        events.push({
-          title: decodeEntities(title),
-          url: fullUrl,
-          image_url,
-          start_date,
-          end_date,
-          start_time: null,
-          end_time: null,
-          event_type: 'other',
-          is_free,
-        })
-      }
-      return events
-    }
-  } catch { /* not JSON, parse as HTML */ }
-
-  // Parse as HTML — look for event card patterns
-  // Australian Museum uses blockbuster-card and event-calendar__item patterns
-  const cardRe = /<(?:div|article)[^>]*class="[^"]*(?:blockbuster-card|event-card|event-calendar__item)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|article)>/gi
+  // Each event card has a link to /visit/whats-on/[slug]
+  // Grab the link and then the surrounding context (up to next link)
+  const linkRe = /href="(https?:\/\/australian\.museum\/visit\/whats-on\/[a-z0-9][^"?#]+)"/gi
   let m: RegExpExecArray | null
+  const urls: string[] = []
+  while ((m = linkRe.exec(html)) !== null) {
+    const url = m[1].split('?')[0].replace(/\/$/, '')
+    if (!seen.has(url)) { seen.add(url); urls.push(url) }
+  }
 
-  // Simpler: extract all /visit/whats-on/[slug] hrefs with their surrounding context
-  const linkRe = /href="(https?:\/\/australian\.museum\/visit\/whats-on\/[^"]+)"[^>]*>([\s\S]{0,800}?)(?=href="|$)/gi
-  while ((m = linkRe.exec(body)) !== null) {
-    const url = m[1].split('?')[0]
-    const context = m[2]
+  console.log(`[ausmuseum] Found ${urls.length} event links in HTML`)
+
+  for (const url of urls) {
+    // Find the context around this URL in the HTML
+    const idx = html.indexOf(`href="${url}"`)
+    if (idx === -1) continue
+    // Take a window of HTML around the link for parsing
+    const start = Math.max(0, idx - 600)
+    const end = Math.min(html.length, idx + 1200)
+    const context = html.slice(start, end)
 
     // Title from h3/h4
-    const titleM = context.match(/<h[2-5][^>]*>([\s\S]*?)<\/h[2-5]>/)
+    const titleM = context.match(/<h[2-5][^>]*class="[^"]*(?:card|title)[^"]*"[^>]*>([\s\S]*?)<\/h[2-5]>/)
+      ?? context.match(/<h[2-5][^>]*>([\s\S]*?)<\/h[2-5]>/)
     if (!titleM) continue
     const title = decodeEntities(stripTags(titleM[1])).trim()
     if (!title || title.length < 3) continue
 
-    // Image from background-image style or src
+    // Image from background-image style
     let image_url: string | null = null
     const bgM = context.match(/background-image\s*:\s*url\(['"]?([^'")\s]+)['"]?\)/)
     if (bgM) image_url = bgM[1].startsWith('http') ? bgM[1] : `${BASE_URL}${bgM[1]}`
@@ -147,9 +106,9 @@ function parseApiResponse(body: string): AusMuseumEvent[] {
     }
 
     // Dates
-    const dateRangeM = context.match(/(\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\s*[–\-—]\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/)
     let start_date: string | null = null
     let end_date: string | null = null
+    const dateRangeM = context.match(/(\d{1,2}\s+[A-Za-z]+(?:\s+\d{4})?)\s*[–\-—]\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/)
     if (dateRangeM) {
       const endParsed = parseDate(dateRangeM[2])
       const year = (dateRangeM[2].match(/\d{4}/) ?? [])[0] ?? ''
@@ -161,9 +120,9 @@ function parseApiResponse(body: string): AusMuseumEvent[] {
       if (singleM) start_date = parseDate(singleM[1])
     }
 
-    // Event type
-    const typeM = context.match(/class="[^"]*content-tag[^"]*"[^>]*>([^<]+)</)
-    const typeText = typeM ? typeM[1].toLowerCase() : ''
+    // Event type from content-tag
+    const typeM = context.match(/class="[^"]*content-tag[^"]*"[^>]*>\s*([^<]{2,30})\s*</)
+    const typeText = typeM ? typeM[1].toLowerCase().trim() : ''
     let event_type = 'other'
     if (typeText.includes('exhibition')) event_type = 'exhibition'
     else if (typeText.includes('talk') || typeText.includes('lecture')) event_type = 'talk'
@@ -171,90 +130,44 @@ function parseApiResponse(body: string): AusMuseumEvent[] {
     else if (typeText.includes('performance')) event_type = 'performance'
     else if (typeText.includes('festival')) event_type = 'festival'
 
-    const is_free = /\bfree\b/i.test(context) && !/charges apply|buy ticket/i.test(context)
+    const is_free = /\bfree\b/i.test(context) && !/charges apply|buy ticket|ticketed/i.test(context)
 
-    const slug = url.split('/').filter(Boolean).pop() ?? ''
-    if (events.some(e => e.url === url)) continue
-
-    events.push({ title, url, image_url, start_date, end_date, start_time: null, end_time: null, event_type, is_free })
+    events.push({ title, url, image_url, start_date, end_date, event_type, is_free })
   }
 
   return events
 }
 
 export async function fetchAustralianMuseumEvents(): Promise<RawEvent[]> {
-  // Step 1: GET the page to obtain CSRF token
-  let pageHtml = ''
-  let csrfToken = ''
-  let sessionCookies = ''
-
+  let html: string
   try {
-    const pageRes = await fetchWithTimeout(WHATS_ON_URL, { headers: BROWSER_HEADERS })
-    if (!pageRes.ok) {
-      console.error(`[ausmuseum] Page returned ${pageRes.status}`)
+    const res = await fetchWithTimeout(WHATS_ON_URL, { headers: BROWSER_HEADERS })
+    if (!res.ok) {
+      console.error(`[ausmuseum] Page returned ${res.status}`)
       return []
     }
-    pageHtml = await pageRes.text()
-    const setCookie = pageRes.headers.get('set-cookie') ?? ''
-    sessionCookies = setCookie
-    csrfToken = extractCsrf(pageHtml, setCookie)
+    html = await res.text()
+    console.log(`[ausmuseum] Fetched listing page (${html.length} chars)`)
   } catch (err) {
-    console.error('[ausmuseum] Failed to fetch page:', err)
+    console.error('[ausmuseum] Failed to fetch listing page:', err)
     return []
   }
 
-  if (!csrfToken) {
-    console.error('[ausmuseum] Could not extract CSRF token')
-    return []
-  }
-
-  // Step 2: POST to events API
-  let apiBody = ''
-  try {
-    const cookieHeader = sessionCookies
-      .split(/,(?=[^;]+?=)/)
-      .map(c => c.trim().split(';')[0])
-      .join('; ')
-
-    const apiRes = await fetchWithTimeout(API_URL, {
-      method: 'POST',
-      headers: {
-        ...BROWSER_HEADERS,
-        'Accept': '*/*',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Referer': WHATS_ON_URL,
-        'X-CSRFToken': csrfToken,
-        'Cookie': cookieHeader,
-      },
-      body: `csrfmiddlewaretoken=${encodeURIComponent(csrfToken)}&date_range=anytime&event_type=&audience=`,
-    })
-    if (!apiRes.ok) {
-      console.error(`[ausmuseum] API returned ${apiRes.status}`)
-      return []
-    }
-    apiBody = await apiRes.text()
-  } catch (err) {
-    console.error('[ausmuseum] Failed to call events API:', err)
-    return []
-  }
-
-  const parsed = parseApiResponse(apiBody)
-  console.log(`[ausmuseum] Parsed ${parsed.length} events from API`)
-
+  const parsed = parseListingPage(html)
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
 
   for (const e of parsed) {
+    // Skip if no date and not "now open"
     if (!e.start_date && !e.end_date) {
-      // "Now open" / permanent exhibitions — use today as start
-      const nowOpenM = pageHtml.match(new RegExp(e.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s\\S]{0,300}Now open', 'i'))
-      if (!nowOpenM) {
-        console.log(`[ausmuseum] Skipping "${e.title}": no date`)
-        continue
-      }
+      const nowOpen = /now open/i.test(html.slice(
+        Math.max(0, html.indexOf(e.url) - 500),
+        html.indexOf(e.url) + 500
+      ))
+      if (!nowOpen) { console.log(`[ausmuseum] Skipping "${e.title}": no date`); continue }
     }
     if (e.end_date && e.end_date < today) {
-      console.log(`[ausmuseum] Skipping "${e.title}": past event`)
+      console.log(`[ausmuseum] Skipping "${e.title}": past`)
       continue
     }
 
@@ -265,8 +178,6 @@ export async function fetchAustralianMuseumEvents(): Promise<RawEvent[]> {
       event_type: e.event_type,
       start_date: e.start_date ?? today,
       end_date: e.end_date ?? undefined,
-      start_time: e.start_time ?? undefined,
-      end_time: e.end_time ?? undefined,
       venue: 'Australian Museum',
       suburb: 'Sydney CBD',
       image_url: e.image_url ?? undefined,
