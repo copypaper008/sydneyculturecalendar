@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Calendar, Tag, Lightbulb } from 'lucide-react';
 import { Event, EventType } from '@/lib/types';
+import { toInstitutionSlug } from '@/lib/utils';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
               >
                 {/* Institution cell — links to institution page */}
                 <Link
-                  href={`/institutions/${encodeURIComponent(institution)}`}
+                  href={`/institutions/${toInstitutionSlug(institution)}`}
                   style={{ display: 'flex', textDecoration: 'none' }}
                 >
                   <div style={{
