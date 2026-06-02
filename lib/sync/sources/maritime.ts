@@ -259,8 +259,13 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       }
 
       if (!start_date) {
-        const isoM = pageHtml.match(/\b(\d{4}-\d{2}-\d{2})\b/)
-        if (isoM) start_date = isoM[1]
+        // Only match dates in a plausible future range to avoid matching build/version strings
+        const today2 = new Date().toISOString().slice(0, 10)
+        const isoRe = /\b(202[5-9]-\d{2}-\d{2})\b/g
+        let isoM: RegExpExecArray | null
+        while ((isoM = isoRe.exec(pageHtml)) !== null) {
+          if (isoM[1] >= today2) { start_date = isoM[1]; break }
+        }
       }
       if (!start_date) {
         const MONTHS: Record<string, string> = {
