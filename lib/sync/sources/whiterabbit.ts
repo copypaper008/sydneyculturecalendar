@@ -125,7 +125,10 @@ async function scrapeExhibitionPage(url: string): Promise<{ image_url: string | 
     const html = await res.text()
     const imgM = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
     const image_url = imgM ? imgM[1] : null
-    const descM = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const descM = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
     const description = descM ? decodeEntities(descM[1]) : ''
     return { image_url, description }
   } catch {

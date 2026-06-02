@@ -130,11 +130,15 @@ async function scrapeEventPage(url: string): Promise<{ description: string; imag
     if (!res.ok) return { description: '', image_url: null, start_time: null, end_time: null }
     const html = await res.text()
 
-    const descM = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const descM = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
     const description = descM ? decodeEntities(descM[1]) : ''
 
     let image_url: string | null = null
     const ogImgM = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/)
     if (ogImgM) image_url = ogImgM[1].startsWith('http') ? ogImgM[1] : `${BASE_URL}${ogImgM[1]}`
 
     let start_time: string | null = null

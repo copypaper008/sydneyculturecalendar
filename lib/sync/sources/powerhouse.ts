@@ -120,7 +120,10 @@ async function scrapeProgramPage(path: string): Promise<ProgramDetails | null> {
 
     // Description
     let description = ''
-    const ogDesc = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const ogDesc = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
     if (ogDesc) description = decodeEntities(ogDesc[1])
 
     // Image

@@ -62,7 +62,10 @@ async function scrapeEventPage(path: string, today: string): Promise<RawEvent | 
     if (!title) { console.log(`[ausmuseum] ${path}: no title`); return null }
 
     // Description
-    const descM = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const descM = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
     const description = descM ? decodeEntities(descM[1]) : ''
 
     // Image
