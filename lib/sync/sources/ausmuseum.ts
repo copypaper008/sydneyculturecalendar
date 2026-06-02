@@ -115,6 +115,9 @@ async function scrapeEventPage(path: string, today: string): Promise<RawEvent | 
     else if (typeHint.includes('festival')) event_type = 'festival'
 
     const is_free = /\bfree\b/i.test(html) && !/charges apply|buy ticket|ticketed/i.test(html)
+    const isOngoingExhibition = event_type === 'exhibition' && !end_date
+    const tags = ['australian-museum', is_free ? 'free' : 'ticketed']
+    if (isOngoingExhibition) tags.push('ongoing')
 
     return {
       title,
@@ -128,7 +131,7 @@ async function scrapeEventPage(path: string, today: string): Promise<RawEvent | 
       image_url: image_url ?? undefined,
       event_url: url,
       is_free,
-      tags: ['australian-museum', is_free ? 'free' : 'ticketed'],
+      tags,
       source: 'ausmuseum',
       source_id: slug,
     }

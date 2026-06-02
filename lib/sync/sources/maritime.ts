@@ -295,11 +295,19 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
+      const typeHint = (title + ' ' + description).toLowerCase()
+      let event_type = 'exhibition'
+      if (typeHint.includes('talk') || typeHint.includes('lecture')) event_type = 'talk'
+      else if (typeHint.includes('tour')) event_type = 'heritage'
+      else if (typeHint.includes('performance') || typeHint.includes('concert')) event_type = 'performance'
+      const isOngoingEvent = !end_date
+      const tags = ['maritime-museum', is_free ? 'free' : 'ticketed']
+      if (isOngoingEvent) tags.push('ongoing')
 
       events.push({
         title,
         institution: 'Australian National Maritime Museum',
-        event_type: 'other',
+        event_type,
         start_date: start_date ?? today,
         end_date: end_date ?? undefined,
         venue: 'Australian National Maritime Museum',
@@ -308,7 +316,7 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         image_url: image_url ?? undefined,
         event_url: url,
         is_free,
-        tags: ['maritime-museum', is_free ? 'free' : 'ticketed'],
+        tags,
         source: 'maritime',
         source_id: slug,
       })
