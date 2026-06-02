@@ -245,12 +245,12 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       let end_date: string | null = null
 
       const jsonLdBlocks = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+      // Pass 1: prefer event/exhibition-typed blocks
       for (const block of jsonLdBlocks) {
         const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
         try {
           const d = JSON.parse(inner)
           const items = Array.isArray(d) ? d : [d]
-          // Only trust event-typed JSON-LD, not WebSite/Organization blocks
           for (const item of items) {
             const type = String(item['@type'] ?? '').toLowerCase()
             if (!type.includes('event') && !type.includes('exhibition')) continue
@@ -260,28 +260,35 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         } catch { /* ignore */ }
         if (start_date) break
       }
-
+      // Pass 2: fall back to any JSON-LD block that has startDate
       if (!start_date) {
-        // Only match dates in a plausible future range to avoid matching build/version strings
-        const today2 = new Date().toISOString().slice(0, 10)
-        const isoRe = /\b(202[5-9]-\d{2}-\d{2})\b/g
-        let isoM: RegExpExecArray | null
-        while ((isoM = isoRe.exec(pageHtml)) !== null) {
-          if (isoM[1] >= today2) { start_date = isoM[1]; break }
+        for (const block of jsonLdBlocks) {
+          const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
+          try {
+            const d = JSON.parse(inner)
+            const items = Array.isArray(d) ? d : [d]
+            for (const item of items) {
+              if (item.startDate && !start_date) start_date = item.startDate.slice(0, 10)
+              if (item.endDate && !end_date) end_date = item.endDate.slice(0, 10)
+            }
+          } catch { /* ignore */ }
+          if (start_date) break
         }
       }
+      // Pass 3: human-readable date in visible text (not ISO — too many false positives from scripts)
       if (!start_date) {
         const MONTHS: Record<string, string> = {
           january: '01', february: '02', march: '03', april: '04',
           may: '05', june: '06', july: '07', august: '08',
           september: '09', october: '10', november: '11', december: '12',
         }
-        const dateM = pageHtml.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/)
+        const dateM = pageHtml.match(/(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/i)
         if (dateM) {
           const month = MONTHS[dateM[2].toLowerCase()]
           if (month) start_date = `${dateM[3]}-${month}-${dateM[1].padStart(2, '0')}`
         }
       }
+      console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
       const isOngoing = /\b(now on|now open|permanent|ongoing)\b/i.test(pageHtml)
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
