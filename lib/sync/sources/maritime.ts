@@ -173,28 +173,57 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
   }
 }
 
-/** Fallback: extract /en/whats-on/ links from raw HTML and fetch og: data per event */
-async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
+/** Try to extract event URLs from the sitemap */
+async function fetchFromSitemap(): Promise<RawEvent[]> {
+  const today = new Date().toISOString().split('T')[0]
+  const sitemapUrls = [
+    `${BASE_URL}/sitemap.xml`,
+    `${BASE_URL}/en/sitemap.xml`,
+    `${BASE_URL}/sitemap_index.xml`,
+  ]
+
+  let sitemapXml = ''
+  for (const url of sitemapUrls) {
+    try {
+      const res = await fetchWithTimeout(url)
+      console.log(`[maritime] sitemap ${url} → ${res.status}`)
+      if (res.ok) { sitemapXml = await res.text(); break }
+    } catch { /* skip */ }
+  }
+
+  if (!sitemapXml) {
+    console.log('[maritime] No sitemap found')
+    return []
+  }
+
+  // If this is a sitemap index, fetch the first child sitemap
+  if (sitemapXml.includes('<sitemapindex')) {
+    const childM = sitemapXml.match(/<loc>([^<]+)<\/loc>/)
+    if (childM) {
+      try {
+        const res = await fetchWithTimeout(childM[1].trim())
+        if (res.ok) sitemapXml = await res.text()
+      } catch { /* skip */ }
+    }
+  }
+
+  // Extract all /whats-on/ URLs from the sitemap
   const seen = new Set<string>()
   const paths: string[] = []
-  // Links may be /en/whats-on/... or /whats-on/... — be liberal with slug characters
-  const linkRe = /href="(\/(?:en\/)?whats-on\/[^"?#\s][^"?#]*)"/gi
+  const locRe = /<loc>([^<]*\/(?:en\/)?whats-on\/[^<]+)<\/loc>/gi
   let m: RegExpExecArray | null
-  while ((m = linkRe.exec(html)) !== null) {
-    const path = m[1].replace(/\/$/, '')
-    // Skip the whats-on root and pagination
+  while ((m = locRe.exec(sitemapXml)) !== null) {
+    const raw = m[1].trim()
+    const path = raw.startsWith('http') ? new URL(raw).pathname.replace(/\/$/, '') : raw.replace(/\/$/, '')
     if (/^\/(?:en\/)?whats-on\/?$/.test(path)) continue
     if (!seen.has(path)) { seen.add(path); paths.push(path) }
   }
-  console.log(`[maritime] HTML fallback: page length ${html.length}, found ${paths.length} event paths`)
-  if (paths.length === 0) {
-    console.log('[maritime] Sample HTML (first 2000 chars):', html.slice(0, 2000))
-  }
+  console.log(`[maritime] Sitemap found ${paths.length} whats-on paths`)
 
-  const today = new Date().toISOString().split('T')[0]
+  if (paths.length === 0) return []
+
   const events: RawEvent[] = []
-
-  for (const path of paths.slice(0, 30)) {
+  for (const path of paths.slice(0, 40)) {
     const slug = path.split('/').filter(Boolean).pop()!
     const url = `${BASE_URL}${path}`
     try {
@@ -212,9 +241,9 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
       const imgM = pageHtml.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
       const image_url = imgM ? imgM[1] : null
 
-      // Dates from JSON-LD or text
       let start_date: string | null = null
       let end_date: string | null = null
+
       const jsonLdBlocks = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
       for (const block of jsonLdBlocks) {
         const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
@@ -228,7 +257,7 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
         } catch { /* ignore */ }
         if (start_date) break
       }
-      // Fallback: look for ISO dates or human-readable dates in HTML
+
       if (!start_date) {
         const isoM = pageHtml.match(/\b(\d{4}-\d{2}-\d{2})\b/)
         if (isoM) start_date = isoM[1]
@@ -245,9 +274,10 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
           if (month) start_date = `${dateM[3]}-${month}-${dateM[1].padStart(2, '0')}`
         }
       }
+
       const isOngoing = /\b(now on|now open|permanent|ongoing)\b/i.test(pageHtml)
-      if (!start_date && !isOngoing) { console.log(`[maritime] Skipping ${slug}: no date`); continue }
-      if (end_date && end_date < today) { console.log(`[maritime] Skipping ${slug}: past`); continue }
+      if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
+      if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
 
@@ -270,94 +300,65 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
     } catch { /* skip */ }
   }
 
-  console.log(`[maritime] HTML fallback returning ${events.length} events`)
+  console.log(`[maritime] Sitemap approach returning ${events.length} events`)
   return events
 }
 
 export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
+  // Primary approach: sitemap — most reliable for JS-rendered Next.js sites
+  const sitemapEvents = await fetchFromSitemap()
+  if (sitemapEvents.length > 0) return sitemapEvents
+
+  // Fallback: try _next/data API using buildId from the whats-on page
   let html: string
   try {
     const res = await fetchWithTimeout(WHATS_ON_URL)
-    if (!res.ok) {
-      console.error(`[maritime] Whats-on page returned ${res.status}`)
-      return []
-    }
+    if (!res.ok) { console.error(`[maritime] Whats-on page returned ${res.status}`); return [] }
     html = await res.text()
   } catch (err) {
     console.error('[maritime] Failed to fetch page:', err)
     return []
   }
 
-  // Parse __NEXT_DATA__ to get buildId — events are not in the initial payload,
-  // they're loaded via the _next/data API using the build ID
   const nextDataM = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
-  if (!nextDataM) {
-    console.error('[maritime] No __NEXT_DATA__ found')
-    return []
-  }
+  if (!nextDataM) { console.error('[maritime] No __NEXT_DATA__ found'); return [] }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let nextData: any
-  try {
-    nextData = JSON.parse(nextDataM[1])
-  } catch (err) {
-    console.error('[maritime] Failed to parse __NEXT_DATA__:', err)
-    return []
-  }
+  try { nextData = JSON.parse(nextDataM[1]) } catch { return [] }
 
   const buildId = nextData?.buildId
-  if (!buildId) {
-    console.error('[maritime] No buildId in __NEXT_DATA__')
-    return []
-  }
-
+  if (!buildId) { console.error('[maritime] No buildId'); return [] }
   console.log(`[maritime] buildId: ${buildId}`)
-  // Log top-level keys of __NEXT_DATA__ to understand data structure
-  const ndKeys = Object.keys(nextData?.props ?? {})
-  console.log(`[maritime] __NEXT_DATA__ props keys: ${ndKeys.join(', ')}`)
 
-  // Try several _next/data endpoint patterns the site might use
   const candidateUrls = [
     `${BASE_URL}/_next/data/${buildId}/en/whats-on.json`,
     `${BASE_URL}/_next/data/${buildId}/en/whats-on.json?slug=whats-on`,
     `${BASE_URL}/_next/data/${buildId}/en/search.json`,
-    `${BASE_URL}/_next/data/${buildId}/en/search.json?query=`,
   ]
 
-  let pageApiData: unknown = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pageApiData: any = null
   for (const dataUrl of candidateUrls) {
     try {
       const dataRes = await fetchWithTimeout(dataUrl)
       console.log(`[maritime] ${dataUrl} → ${dataRes.status}`)
-      if (dataRes.ok) {
-        pageApiData = await dataRes.json()
-        break
-      }
-    } catch (err) {
-      console.log(`[maritime] ${dataUrl} error: ${err}`)
-    }
+      if (dataRes.ok) { pageApiData = await dataRes.json(); break }
+    } catch { /* skip */ }
   }
 
-  if (!pageApiData) {
-    console.log('[maritime] All data API attempts failed, falling back to HTML parsing')
-    return parseHtmlLinks(html)
-  }
+  if (!pageApiData) { console.error('[maritime] All _next/data attempts failed'); return [] }
 
   const rawItems = extractEvents(pageApiData)
-  console.log(`[maritime] Found ${rawItems.length} candidate items from data API`)
-
+  console.log(`[maritime] Found ${rawItems.length} candidate items`)
   if (rawItems.length === 0) {
-    // Log a sample of the API response to understand its structure
-    const sample = JSON.stringify(pageApiData).slice(0, 500)
-    console.log(`[maritime] Data API response sample: ${sample}`)
-    console.log('[maritime] Data API returned no items, falling back to HTML parsing')
-    return parseHtmlLinks(html)
+    console.log('[maritime] API sample:', JSON.stringify(pageApiData).slice(0, 300))
+    return []
   }
 
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
   const seen = new Set<string>()
-
   for (const item of rawItems) {
     const event = mapToRawEvent(item, today)
     if (!event) continue
