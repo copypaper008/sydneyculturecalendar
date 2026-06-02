@@ -5,6 +5,7 @@ import { fetchAGNSWEvents } from '@/lib/sync/sources/agnsw'
 import { fetchPowerhouseEvents } from '@/lib/sync/sources/powerhouse'
 import { fetchAustralianMuseumEvents } from '@/lib/sync/sources/ausmuseum'
 import { fetchMaritimeEvents } from '@/lib/sync/sources/maritime'
+import { fetchWhiteRabbitEvents } from '@/lib/sync/sources/whiterabbit'
 import { syncEvents } from '@/lib/sync/engine'
 
 function isAuthorized(request: NextRequest): boolean {
@@ -17,17 +18,18 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 async function runSync() {
-  const [slnswEvents, mcaEvents, agnswEvents, powerhouseEvents, ausmuseumEvents, maritimeEvents] = await Promise.all([
+  const [slnswEvents, mcaEvents, agnswEvents, powerhouseEvents, ausmuseumEvents, maritimeEvents, whiteRabbitEvents] = await Promise.all([
     fetchSLNSWEvents(),
     fetchMCAEvents(),
     fetchAGNSWEvents(),
     fetchPowerhouseEvents(),
     fetchAustralianMuseumEvents(),
     fetchMaritimeEvents(),
+    fetchWhiteRabbitEvents(),
   ])
   const result = await syncEvents([
     ...slnswEvents, ...mcaEvents, ...agnswEvents,
-    ...powerhouseEvents, ...ausmuseumEvents, ...maritimeEvents,
+    ...powerhouseEvents, ...ausmuseumEvents, ...maritimeEvents, ...whiteRabbitEvents,
   ])
   return result
 }
