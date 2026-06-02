@@ -22,6 +22,8 @@ export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
   const result: SyncResult = { inserted: 0, updated: 0, skipped: 0, errors: [] }
 
   for (const raw of rawEvents) {
+    // Skip school-targeted events
+    if (/\bschool\b/i.test(raw.title) || /\bschool\b/i.test(raw.description ?? '')) { result.skipped++; continue }
     // Skip if definitively past: end_date set and past
     if (raw.end_date && raw.end_date < today) { result.skipped++; continue }
     // Skip one-off past events (no end_date, not an exhibition, start_date past)

@@ -134,6 +134,25 @@ function isFree(status: string): boolean {
   return true
 }
 
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+}
+
+async function scrapeEventDescription(url: string): Promise<string | undefined> {
+  try {
+    const fullUrl = url.startsWith('http') ? url : `${BASE_URL}${url}`
+    const res = await fetchWithTimeout(fullUrl)
+    if (!res.ok) return undefined
+    const html = await res.text()
+    const m = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    return m ? decodeEntities(m[1]).trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function fetchMCAEvents(): Promise<RawEvent[]> {
   let data: MCAResponse
   try {
@@ -161,6 +180,7 @@ export async function fetchMCAEvents(): Promise<RawEvent[]> {
 
     const slug = e.url.split('/').filter(Boolean).pop() ?? e.title.toLowerCase().replace(/\s+/g, '-')
     const image_url = e.image?.src ? `${BASE_URL}${e.image.src}` : undefined
+    const description = await scrapeEventDescription(e.url)
 
     events.push({
       title: e.title,
@@ -172,6 +192,7 @@ export async function fetchMCAEvents(): Promise<RawEvent[]> {
       end_time: end_time ?? undefined,
       venue: 'MCA Australia',
       suburb: 'The Rocks',
+      description,
       image_url,
       event_url: e.url,
       is_free: isFree(e.status),

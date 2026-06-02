@@ -18,86 +18,43 @@ function formatTime(t?: string): string | null {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-// ─── Mini calendar ───────────────────────────────────────────────────────────
+// ─── Event Gantt bar ─────────────────────────────────────────────────────────
 
-const CAL_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const CAL_MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+const EVENT_COLOURS: Record<string, string> = {
+  exhibition: '#7c3aed',
+  festival: '#f97316',
+  performance: '#ec4899',
+  talk: '#3b82f6',
+  open_day: '#10b981',
+  heritage: '#d97706',
+  other: '#6b7280',
+};
 
-function getMonthSpan(startISO: string, endISO: string): { year: number; month: number }[] {
-  const result: { year: number; month: number }[] = [];
+const MON_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function ganttMonths(startISO: string, endISO: string) {
+  const months: { year: number; month: number; days: number; label: string }[] = [];
   let y = parseInt(startISO.slice(0, 4), 10);
   let m = parseInt(startISO.slice(5, 7), 10) - 1;
   const endY = parseInt(endISO.slice(0, 4), 10);
   const endM = parseInt(endISO.slice(5, 7), 10) - 1;
   while (y < endY || (y === endY && m <= endM)) {
-    result.push({ year: y, month: m });
+    months.push({ year: y, month: m, days: daysInMonth(y, m), label: MON_LABELS[m] });
     if (++m > 11) { m = 0; y++; }
   }
-  return result;
+  return months;
 }
 
-function MonthGrid({ year, month, startISO, endISO, todayISO }: {
-  year: number; month: number; startISO: string; endISO: string; todayISO: string;
-}) {
-  const firstDOW = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = Array(firstDOW).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  return (
-    <div style={{ width: '224px', flexShrink: 0 }}>
-      <p style={{ textAlign: 'center', fontWeight: 700, fontSize: '.85rem', margin: '0 0 10px', color: 'var(--colour-ink)' }}>
-        {CAL_MONTHS[month]} {year}
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 32px)', rowGap: '2px' }}>
-        {CAL_DAYS.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: '.65rem', fontWeight: 700, color: 'var(--colour-muted)', padding: '2px 0', letterSpacing: '.05em' }}>
-            {d}
-          </div>
-        ))}
-        {cells.map((day, idx) => {
-          if (!day) return <div key={`b${idx}`} style={{ height: '32px' }} />;
-          const mm = String(month + 1).padStart(2, '0');
-          const dd = String(day).padStart(2, '0');
-          const iso = `${year}-${mm}-${dd}`;
-          const inRange = iso >= startISO && iso <= endISO;
-          const isEndpoint = iso === startISO || iso === endISO;
-          const isToday = iso === todayISO;
-          return (
-            <div key={`d${idx}`} style={{
-              height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: inRange && !isEndpoint ? 'var(--colour-primary-soft)' : 'transparent',
-            }}>
-              <div style={{
-                width: '28px', height: '28px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
-                background: isEndpoint ? 'var(--colour-primary)' : 'transparent',
-                color: isEndpoint ? 'white' : inRange ? 'var(--colour-primary-dark)' : 'var(--colour-ink)',
-                fontSize: '.8rem',
-                fontWeight: inRange ? 600 : 400,
-                outline: isToday && !isEndpoint ? '2px solid var(--colour-primary)' : undefined,
-                outlineOffset: '2px',
-              }}>
-                {day}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function dayIndex(iso: string): number {
+  return Math.floor(new Date(iso + 'T00:00:00Z').getTime() / 86400000);
 }
 
-function EventDateCalendar({ event }: { event: Event }) {
+function EventGantt({ event }: { event: Event }) {
   const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
-  const today = new Date();
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const endISO = event.end_date || event.start_date;
 
   if (isOngoing) {
     return (
@@ -132,12 +89,29 @@ function EventDateCalendar({ event }: { event: Event }) {
     );
   }
 
-  const months = getMonthSpan(event.start_date, endISO);
-  const MAX = 3;
-  const truncated = months.length > MAX;
-  const displayMonths = truncated
-    ? [months[0], months[months.length - 1]]
-    : months;
+  const endISO = event.end_date || event.start_date;
+  const months = ganttMonths(event.start_date, endISO);
+  const totalDays = months.reduce((sum, m) => sum + m.days, 0);
+  const color = EVENT_COLOURS[event.event_type] ?? EVENT_COLOURS.other;
+
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  const firstMonth = months[0];
+  const lastMonth = months[months.length - 1];
+  const ganttStart = `${firstMonth.year}-${String(firstMonth.month + 1).padStart(2, '0')}-01`;
+  const ganttEnd = `${lastMonth.year}-${String(lastMonth.month + 1).padStart(2, '0')}-${String(lastMonth.days).padStart(2, '0')}`;
+  const ganttStartDay = dayIndex(ganttStart);
+  const ganttSpan = dayIndex(ganttEnd) - ganttStartDay + 1;
+
+  const barLeft = ((dayIndex(event.start_date) - ganttStartDay) / ganttSpan) * 100;
+  const barRight = ((dayIndex(endISO) - ganttStartDay + 1) / ganttSpan) * 100;
+  const barWidth = Math.max(barRight - barLeft, 0.5);
+
+  const todayInRange = todayISO >= ganttStart && todayISO <= ganttEnd;
+  const todayPct = todayInRange ? ((dayIndex(todayISO) - ganttStartDay) / ganttSpan) * 100 : null;
+
+  const isSingleDay = event.start_date === endISO;
 
   return (
     <section style={{ marginTop: 'var(--space-6)' }}>
@@ -149,28 +123,67 @@ function EventDateCalendar({ event }: { event: Event }) {
         borderRadius: 'var(--radius-md)', padding: 'var(--space-5)',
         boxShadow: 'var(--shadow-card)',
       }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-6)', alignItems: 'flex-start' }}>
-          {displayMonths.map(({ year, month }, idx) => (
-            <div key={`${year}-${month}`} style={{ display: 'contents' }}>
-              {truncated && idx === 1 && (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--colour-muted)', gap: '4px', paddingTop: '28px',
-                  fontSize: '.75rem', fontWeight: 600, letterSpacing: '.03em',
-                }}>
-                  <span>·</span><span>·</span><span>·</span>
-                  <span style={{ fontSize: '.7rem', whiteSpace: 'nowrap' }}>{months.length} months</span>
-                </div>
-              )}
-              <MonthGrid year={year} month={month} startISO={event.start_date} endISO={endISO} todayISO={todayISO} />
+        {/* Month headers */}
+        <div style={{ display: 'flex', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--colour-line)' }}>
+          {months.map(({ year, month, days, label }) => (
+            <div
+              key={`${year}-${month}`}
+              style={{
+                flexBasis: `${(days / totalDays) * 100}%`, flexShrink: 0,
+                fontSize: '.72rem', fontWeight: 700,
+                color: 'var(--colour-muted)', letterSpacing: '.04em', textTransform: 'uppercase',
+                paddingLeft: '4px',
+              }}
+            >
+              {label}{months.length <= 4 ? ` ${year}` : ''}
             </div>
           ))}
         </div>
-        {months.length > 1 && (
-          <p style={{ margin: 'var(--space-4) 0 0', fontSize: '.78rem', color: 'var(--colour-muted)', borderTop: '1px solid var(--colour-line)', paddingTop: 'var(--space-3)' }}>
-            {formatDateRange(event.start_date, event.end_date)}
-          </p>
-        )}
+
+        {/* Track + bar */}
+        <div style={{ position: 'relative', height: '36px', marginBottom: '10px' }}>
+          {/* Grey track */}
+          <div style={{
+            position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+            left: 0, right: 0, height: '8px',
+            background: 'var(--colour-line)', borderRadius: '4px',
+          }} />
+          {/* Event bar */}
+          <div style={{
+            position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+            left: `${barLeft}%`, width: `${barWidth}%`,
+            height: '20px',
+            background: `${color}cc`,
+            border: `2px solid ${color}`,
+            borderRadius: '4px',
+            minWidth: '6px',
+          }} />
+          {/* Today line */}
+          {todayPct !== null && (
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0,
+              left: `${todayPct}%`, width: '2px',
+              background: '#ef4444', zIndex: 2,
+            }}>
+              <div style={{
+                position: 'absolute', top: '-3px', left: '50%', transform: 'translateX(-50%)',
+                width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444',
+              }} />
+            </div>
+          )}
+        </div>
+
+        {/* Date labels */}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '.78rem', color: 'var(--colour-muted)', fontWeight: 600 }}>
+            {new Date(event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </span>
+          {!isSingleDay && (
+            <span style={{ fontSize: '.78rem', color: 'var(--colour-muted)', fontWeight: 600 }}>
+              {new Date(endISO + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -302,7 +315,7 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
         </div>
       </div>
 
-      <EventDateCalendar event={event} />
+      <EventGantt event={event} />
 
       {/* Related events */}
       {relatedEvents && relatedEvents.length > 0 && (
