@@ -177,13 +177,14 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
 async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
   const seen = new Set<string>()
   const paths: string[] = []
-  const linkRe = /href="(\/en\/whats-on\/[a-z0-9][^"?#]+)"/gi
+  // Links may be /en/whats-on/... or /whats-on/...
+  const linkRe = /href="(\/(?:en\/)?whats-on\/[a-z0-9][^"?#]+)"/gi
   let m: RegExpExecArray | null
   while ((m = linkRe.exec(html)) !== null) {
     const path = m[1].replace(/\/$/, '')
     if (!seen.has(path)) { seen.add(path); paths.push(path) }
   }
-  console.log(`[maritime] HTML fallback: found ${paths.length} event paths`)
+  console.log(`[maritime] HTML fallback: page length ${html.length}, found ${paths.length} event paths`)
 
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
@@ -217,8 +218,8 @@ async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
           if (d.endDate) end_date = d.endDate.slice(0, 10)
         } catch { /* ignore */ }
       }
-      if (!start_date) continue
-      if (end_date && end_date < today) continue
+      if (!start_date) { console.log(`[maritime] Skipping ${slug}: no date`); continue }
+      if (end_date && end_date < today) { console.log(`[maritime] Skipping ${slug}: past`); continue }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
 

@@ -68,17 +68,19 @@ function parseListingPage(html: string): AusMuseumEvent[] {
   const events: AusMuseumEvent[] = []
   const seen = new Set<string>()
 
-  // Each event card has a link to /visit/whats-on/[slug]
-  // Grab the link and then the surrounding context (up to next link)
-  const linkRe = /href="(https?:\/\/australian\.museum\/visit\/whats-on\/[a-z0-9][^"?#]+)"/gi
+  // Links may be absolute or relative, e.g.:
+  //   href="https://australian.museum/visit/whats-on/bloodsuckers-..."
+  //   href="/visit/whats-on/bloodsuckers-..."
+  const linkRe = /href="((?:https?:\/\/australian\.museum)?\/visit\/whats-on\/([a-z0-9][a-z0-9\-]+))"/gi
   let m: RegExpExecArray | null
   const urls: string[] = []
   while ((m = linkRe.exec(html)) !== null) {
-    const url = m[1].split('?')[0].replace(/\/$/, '')
+    const rawHref = m[1]
+    const url = (rawHref.startsWith('http') ? rawHref : `${BASE_URL}${rawHref}`).split('?')[0].replace(/\/$/, '')
     if (!seen.has(url)) { seen.add(url); urls.push(url) }
   }
 
-  console.log(`[ausmuseum] Found ${urls.length} event links in HTML`)
+  console.log(`[ausmuseum] Page length: ${html.length} chars, found ${urls.length} event links`)
 
   for (const url of urls) {
     // Find the context around this URL in the HTML
