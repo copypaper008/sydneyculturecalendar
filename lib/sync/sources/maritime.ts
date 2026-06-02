@@ -173,6 +173,78 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
   }
 }
 
+/** Fallback: extract /en/whats-on/ links from raw HTML and fetch og: data per event */
+async function parseHtmlLinks(html: string): Promise<RawEvent[]> {
+  const seen = new Set<string>()
+  const paths: string[] = []
+  const linkRe = /href="(\/en\/whats-on\/[a-z0-9][^"?#]+)"/gi
+  let m: RegExpExecArray | null
+  while ((m = linkRe.exec(html)) !== null) {
+    const path = m[1].replace(/\/$/, '')
+    if (!seen.has(path)) { seen.add(path); paths.push(path) }
+  }
+  console.log(`[maritime] HTML fallback: found ${paths.length} event paths`)
+
+  const today = new Date().toISOString().split('T')[0]
+  const events: RawEvent[] = []
+
+  for (const path of paths.slice(0, 30)) {
+    const slug = path.split('/').filter(Boolean).pop()!
+    const url = `${BASE_URL}${path}`
+    try {
+      const res = await fetchWithTimeout(url)
+      if (!res.ok) continue
+      const pageHtml = await res.text()
+
+      const titleM = pageHtml.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/)
+      const title = titleM ? decodeEntities(titleM[1]).replace(/\s*[|\-–]\s*Australian National.*$/i, '').trim() : ''
+      if (!title) continue
+
+      const descM = pageHtml.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+      const description = descM ? decodeEntities(descM[1]) : ''
+
+      const imgM = pageHtml.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)
+      const image_url = imgM ? imgM[1] : null
+
+      // Dates from JSON-LD or text
+      let start_date: string | null = null
+      let end_date: string | null = null
+      const jsonLdM = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i)
+      if (jsonLdM) {
+        try {
+          const d = JSON.parse(jsonLdM[1])
+          if (d.startDate) start_date = d.startDate.slice(0, 10)
+          if (d.endDate) end_date = d.endDate.slice(0, 10)
+        } catch { /* ignore */ }
+      }
+      if (!start_date) continue
+      if (end_date && end_date < today) continue
+
+      const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
+
+      events.push({
+        title,
+        institution: 'Australian National Maritime Museum',
+        event_type: 'other',
+        start_date,
+        end_date: end_date ?? undefined,
+        venue: 'Australian National Maritime Museum',
+        suburb: 'Darling Harbour',
+        description: description || undefined,
+        image_url: image_url ?? undefined,
+        event_url: url,
+        is_free,
+        tags: ['maritime-museum', is_free ? 'free' : 'ticketed'],
+        source: 'maritime',
+        source_id: slug,
+      })
+    } catch { /* skip */ }
+  }
+
+  console.log(`[maritime] HTML fallback returning ${events.length} events`)
+  return events
+}
+
 export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
   let html: string
   try {
@@ -218,8 +290,8 @@ export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
   try {
     const dataRes = await fetchWithTimeout(dataUrl)
     if (!dataRes.ok) {
-      console.error(`[maritime] Data API returned ${dataRes.status} for ${dataUrl}`)
-      return []
+      console.error(`[maritime] Data API returned ${dataRes.status} — falling back to HTML link parsing`)
+      return parseHtmlLinks(html)
     }
     pageApiData = await dataRes.json()
   } catch (err) {
@@ -229,6 +301,11 @@ export async function fetchMaritimeEvents(): Promise<RawEvent[]> {
 
   const rawItems = extractEvents(pageApiData)
   console.log(`[maritime] Found ${rawItems.length} candidate items from data API`)
+
+  if (rawItems.length === 0) {
+    console.log('[maritime] Data API returned no items, falling back to HTML parsing')
+    return parseHtmlLinks(html)
+  }
 
   const today = new Date().toISOString().split('T')[0]
   const events: RawEvent[] = []
