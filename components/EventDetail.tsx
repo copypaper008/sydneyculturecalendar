@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowLeft, ExternalLink, Ticket, CalendarDays } from 'lucide-react';
 import { Event } from '@/lib/types';
+import { toInstitutionSlug } from '@/lib/utils';
 import EventCard from './EventCard';
 
 function formatDateRange(start: string, end?: string): string {
@@ -213,7 +214,7 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
   const endTime = formatTime(event.end_time);
 
   const meta = [
-    { label: 'Institution', value: event.institution, href: `/institutions/${encodeURIComponent(event.institution)}` },
+    { label: 'Institution', value: event.institution, href: `/institutions/${toInstitutionSlug(event.institution)}` },
     { label: 'Dates', value: formatDateRange(event.start_date, event.end_date) },
     startTime ? { label: 'Time', value: endTime ? `${startTime} – ${endTime}` : startTime } : null,
     event.venue ? { label: 'Venue', value: event.venue } : null,
