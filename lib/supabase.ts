@@ -30,18 +30,18 @@ function interleaveOngoing(events: Event[]): Event[] {
 
 const SCHOOL_RE = /\bschool\b/i
 
-function filterSchoolEvents(events: Event[]): Event[] {
+function filterEvents(events: Event[]): Event[] {
   return events.filter(e => !SCHOOL_RE.test(e.title) && !SCHOOL_RE.test(e.description ?? ''))
 }
 
 export async function getEvents(): Promise<Event[]> {
-  if (!supabase) return filterSchoolEvents(seedEvents);
+  if (!supabase) return filterEvents(seedEvents);
   const { data, error } = await supabase
     .from('events')
     .select('*')
     .order('start_date', { ascending: true });
-  if (error || !data) return filterSchoolEvents(seedEvents);
-  return interleaveOngoing(filterSchoolEvents(data as Event[]));
+  if (error || !data) return filterEvents(seedEvents);
+  return interleaveOngoing(filterEvents(data as Event[]));
 }
 
 export async function getEventById(id: string): Promise<Event | null> {

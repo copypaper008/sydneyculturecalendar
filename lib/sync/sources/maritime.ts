@@ -235,7 +235,10 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       const title = titleM ? decodeEntities(titleM[1]).replace(/\s*[|\-–]\s*Australian National.*$/i, '').trim() : ''
       if (!title) continue
 
-      const descM = pageHtml.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+      const descM = pageHtml.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+        ?? pageHtml.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+        ?? pageHtml.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+        ?? pageHtml.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
       const description = descM ? decodeEntities(descM[1]) : ''
 
       const imgM = pageHtml.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)

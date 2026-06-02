@@ -146,7 +146,10 @@ async function scrapeEventDescription(url: string): Promise<string | undefined> 
     const res = await fetchWithTimeout(fullUrl)
     if (!res.ok) return undefined
     const html = await res.text()
-    const m = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]+)"/)
+    const m = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
+      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
+      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
     return m ? decodeEntities(m[1]).trim() : undefined
   } catch {
     return undefined
