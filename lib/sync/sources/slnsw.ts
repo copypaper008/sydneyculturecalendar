@@ -87,6 +87,7 @@ interface EventDetails {
   end_time: string | null
   venue: string | null
   is_online: boolean
+  type_hint: string
 }
 
 /** Scrape a single event page for details */
@@ -175,7 +176,24 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
     let venue: string | null = 'State Library of NSW'
     if (isOnline) venue = null // caller will skip online events
 
-    return { title, description, image_url, start_date, end_date, start_time, end_time, venue, is_online: isOnline }
+    // Broad type hint: JSON-LD @type + first ~800 chars of visible body text + breadcrumbs
+    let type_hint = ''
+    const jsonLdBlocks = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+    for (const block of jsonLdBlocks) {
+      const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
+      try {
+        const d = JSON.parse(inner)
+        const items = Array.isArray(d) ? d : [d]
+        for (const item of items) {
+          if (item['@type']) type_hint += ' ' + String(item['@type'])
+          if (item.description && !description) description = decodeEntities(String(item.description)).trim()
+        }
+      } catch { /* ignore */ }
+    }
+    const bodyM = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+    if (bodyM) type_hint += ' ' + stripTags(bodyM[1]).slice(0, 1000)
+
+    return { title, description, image_url, start_date, end_date, start_time, end_time, venue, is_online: isOnline, type_hint: type_hint.toLowerCase() }
   } catch (err) {
     console.error(`[slnsw] Error fetching event page ${path}:`, err)
     return null
@@ -217,13 +235,14 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
       continue
     }
 
-    const typeHint = (details.title + ' ' + details.description).toLowerCase()
+    const typeHint = (details.title + ' ' + details.description + ' ' + details.type_hint + ' ' + path).toLowerCase()
     let event_type: RawEvent['event_type'] = 'other'
-    if (typeHint.includes('exhibition') || typeHint.includes('display')) event_type = 'exhibition'
-    else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('forum') || typeHint.includes('panel')) event_type = 'talk'
-    else if (typeHint.includes('tour') || typeHint.includes('walk')) event_type = 'heritage'
-    else if (typeHint.includes('performance') || typeHint.includes('concert')) event_type = 'performance'
+    if (typeHint.includes('exhibition') || typeHint.includes('display') || typeHint.includes('exhibitionevent')) event_type = 'exhibition'
+    else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('forum') || typeHint.includes('panel') || typeHint.includes('educationevent') || typeHint.includes('seminar')) event_type = 'talk'
+    else if (typeHint.includes('tour') || typeHint.includes('walk') || typeHint.includes('heritage')) event_type = 'heritage'
+    else if (typeHint.includes('performance') || typeHint.includes('concert') || typeHint.includes('music')) event_type = 'performance'
     else if (typeHint.includes('festival')) event_type = 'festival'
+    else if (typeHint.includes('workshop') || typeHint.includes('class') || typeHint.includes('program')) event_type = 'talk'
 
     const event: RawEvent = {
       title: details.title,
