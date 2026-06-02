@@ -141,21 +141,21 @@ function EventGantt({ event }: { event: Event }) {
         </div>
 
         {/* Track + bar */}
-        <div style={{ position: 'relative', height: '36px', marginBottom: '10px' }}>
+        <div style={{ position: 'relative', height: '40px', marginBottom: '10px' }}>
           {/* Grey track */}
           <div style={{
             position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-            left: 0, right: 0, height: '8px',
-            background: 'var(--colour-line)', borderRadius: '4px',
+            left: 0, right: 0, height: '5px',
+            background: '#e5e0d8', borderRadius: '3px',
           }} />
           {/* Event bar */}
           <div style={{
             position: 'absolute', top: '50%', transform: 'translateY(-50%)',
             left: `${barLeft}%`, width: `${barWidth}%`,
-            height: '20px',
-            background: `${color}cc`,
-            border: `2px solid ${color}`,
-            borderRadius: '4px',
+            height: '26px',
+            background: color,
+            borderRadius: '6px',
+            boxShadow: `0 2px 8px ${color}55`,
             minWidth: '6px',
           }} />
           {/* Today line */}
@@ -164,10 +164,12 @@ function EventGantt({ event }: { event: Event }) {
               position: 'absolute', top: 0, bottom: 0,
               left: `${todayPct}%`, width: '2px',
               background: '#ef4444', zIndex: 2,
+              borderRadius: '1px',
             }}>
               <div style={{
-                position: 'absolute', top: '-3px', left: '50%', transform: 'translateX(-50%)',
+                position: 'absolute', top: '-2px', left: '50%', transform: 'translateX(-50%)',
                 width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444',
+                boxShadow: '0 0 0 2px white',
               }} />
             </div>
           )}
@@ -196,13 +198,13 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
   const endTime = formatTime(event.end_time);
 
   const meta = [
-    { label: 'Institution', value: event.institution },
+    { label: 'Institution', value: event.institution, href: `/institutions/${encodeURIComponent(event.institution)}` },
     { label: 'Dates', value: formatDateRange(event.start_date, event.end_date) },
     startTime ? { label: 'Time', value: endTime ? `${startTime} – ${endTime}` : startTime } : null,
     event.venue ? { label: 'Venue', value: event.venue } : null,
     event.suburb ? { label: 'Suburb', value: event.suburb } : null,
     { label: 'Cost', value: event.is_free ? 'Free admission' : 'Ticketed' },
-  ].filter(Boolean) as { label: string; value: string }[];
+  ].filter(Boolean) as { label: string; value: string; href?: string }[];
 
   return (
     <article>
@@ -276,13 +278,15 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
-              {meta.map(({ label, value }) => (
+              {meta.map(({ label, value, href }) => (
                 <tr key={label} style={{ borderBottom: '1px solid var(--colour-line)' }}>
                   <td style={{ padding: 'var(--space-3) 0', fontSize: '.78rem', fontWeight: 700, color: 'var(--colour-muted)', textTransform: 'uppercase', letterSpacing: '.04em', paddingRight: 'var(--space-3)', whiteSpace: 'nowrap' }}>
                     {label}
                   </td>
                   <td style={{ padding: 'var(--space-3) 0', fontSize: '.9rem', color: 'var(--colour-ink)', fontWeight: 500 }}>
-                    {value}
+                    {href ? (
+                      <Link href={href} style={{ color: 'var(--colour-primary-dark)', fontWeight: 600 }}>{value}</Link>
+                    ) : value}
                   </td>
                 </tr>
               ))}

@@ -36,6 +36,7 @@ const TRACK_H   = 34; // px height of each event bar
 const TRACK_GAP = 6;  // px between stacked bars in one row
 const ROW_PAD   = 14; // px top+bottom padding in each row
 const INST_W    = 192; // px fixed width of institution column
+const MAX_LANES = 5;  // max stacked bars per institution row
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -51,11 +52,14 @@ function clampDayOfYear(iso: string, year: number): number {
 }
 
 function eventBar(event: Event, year: number): { left: number; width: number } {
-  const total  = daysInYear(year);
-  const start  = clampDayOfYear(event.start_date, year);
-  const end    = clampDayOfYear(event.end_date || event.start_date, year);
-  const left   = (start - 1) / total * 100;
-  const width  = Math.max((end - start + 1) / total * 100, 0.8);
+  const total   = daysInYear(year);
+  const start   = clampDayOfYear(event.start_date, year);
+  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
+  // Ongoing events with no end_date extend to year-end so they span the full remaining year
+  const effectiveEnd = event.end_date || (isOngoing ? `${year}-12-31` : event.start_date);
+  const end     = clampDayOfYear(effectiveEnd, year);
+  const left    = (start - 1) / total * 100;
+  const width   = Math.max((end - start + 1) / total * 100, 0.8);
   return { left, width };
 }
 
@@ -285,11 +289,14 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
           {/* Institution rows */}
           {institutions.map(([institution, instEvents], rowIdx) => {
-            const lanes    = assignLanes(instEvents, year);
-            const numLanes = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
-            const rowH     = numLanes * TRACK_H + (numLanes - 1) * TRACK_GAP + ROW_PAD * 2;
-            const suburb   = instEvents[0]?.suburb;
-            const color    = avatarColour(institution);
+            const lanes        = assignLanes(instEvents, year);
+            const allLanes     = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
+            const numLanes     = Math.min(allLanes, MAX_LANES);
+            const visibleLanes = lanes.filter(l => l.lane < MAX_LANES);
+            const overflowCount = lanes.length - visibleLanes.length;
+            const rowH         = numLanes * TRACK_H + (numLanes - 1) * TRACK_GAP + ROW_PAD * 2 + (overflowCount > 0 ? 20 : 0);
+            const suburb       = instEvents[0]?.suburb;
+            const color        = avatarColour(institution);
 
             return (
               <div
@@ -348,7 +355,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                   )}
 
                   {/* Event bars */}
-                  {lanes.map(({ event, lane, bar }) => {
+                  {visibleLanes.map(({ event, lane, bar }) => {
                     const top      = ROW_PAD + lane * (TRACK_H + TRACK_GAP);
                     const color    = EVENT_COLOURS[event.event_type];
                     const wide     = bar.width > 7;
@@ -394,6 +401,16 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                       </div>
                     );
                   })}
+                  {overflowCount > 0 && (
+                    <div style={{
+                      position: 'absolute', bottom: 4, left: 8,
+                      fontSize: '.65rem', fontWeight: 700, color: 'var(--colour-muted)',
+                      background: 'var(--colour-surface)', border: '1px solid var(--colour-line)',
+                      borderRadius: '999px', padding: '1px 8px',
+                    }}>
+                      +{overflowCount} more
+                    </div>
+                  )}
                 </div>
               </div>
             );
