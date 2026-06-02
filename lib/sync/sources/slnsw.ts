@@ -238,11 +238,11 @@ export async function fetchSLNSWEvents(): Promise<RawEvent[]> {
     const typeHint = (details.title + ' ' + details.description + ' ' + details.type_hint + ' ' + path).toLowerCase()
     let event_type: RawEvent['event_type'] = 'other'
     if (typeHint.includes('exhibition') || typeHint.includes('display') || typeHint.includes('exhibitionevent')) event_type = 'exhibition'
-    else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('forum') || typeHint.includes('panel') || typeHint.includes('educationevent') || typeHint.includes('seminar')) event_type = 'talk'
+    else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('forum') || typeHint.includes('panel') || typeHint.includes('educationevent') || typeHint.includes('seminar') || typeHint.includes('literaryevent') || typeHint.includes('reading') || typeHint.includes('author') || typeHint.includes('launch') || typeHint.includes('conversation') || typeHint.includes('discussion') || typeHint.includes('literature') || typeHint.includes('writing')) event_type = 'talk'
     else if (typeHint.includes('tour') || typeHint.includes('walk') || typeHint.includes('heritage')) event_type = 'heritage'
-    else if (typeHint.includes('performance') || typeHint.includes('concert') || typeHint.includes('music')) event_type = 'performance'
+    else if (typeHint.includes('performance') || typeHint.includes('concert') || typeHint.includes('music') || typeHint.includes('screening') || typeHint.includes('screeningevent') || typeHint.includes('film') || typeHint.includes('cinema')) event_type = 'performance'
     else if (typeHint.includes('festival')) event_type = 'festival'
-    else if (typeHint.includes('workshop') || typeHint.includes('class') || typeHint.includes('program')) event_type = 'talk'
+    else if (typeHint.includes('workshop') || typeHint.includes('class') || typeHint.includes('program') || typeHint.includes('learning') || typeHint.includes('training')) event_type = 'talk'
 
     const event: RawEvent = {
       title: details.title,

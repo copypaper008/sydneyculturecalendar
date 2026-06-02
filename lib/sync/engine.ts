@@ -68,6 +68,7 @@ export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
         .update({
           title: payload.title,
           description: payload.description,
+          event_type: payload.event_type,
           start_date: payload.start_date,
           end_date: payload.end_date,
           start_time: payload.start_time,

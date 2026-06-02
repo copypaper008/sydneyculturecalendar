@@ -52,6 +52,7 @@ interface CardData {
   is_free: boolean
   event_type: string
   image_url: string | null
+  description: string
 }
 
 /** Parse all event/exhibition cards from a listing page */
@@ -117,7 +118,11 @@ function parseCards(html: string, defaultType: string): CardData[] {
       ? (rawSrc.startsWith('http') ? rawSrc : `${BASE_URL}${rawSrc}`)
       : null
 
-    cards.push({ url, title, start_date, end_date, location, is_free, event_type, image_url })
+    // Description snippet from card body (may be empty — individual page fetch is the primary source)
+    const cardDescM = body.match(/class="[^"]*card-(?:description|summary|copy|intro|teaser|text)[^"]*"[^>]*>([\s\S]*?)<\/(?:p|div)>/)
+    const description = cardDescM ? decodeEntities(stripTags(cardDescM[1])).trim() : ''
+
+    cards.push({ url, title, start_date, end_date, location, is_free, event_type, image_url, description })
   }
 
   return cards
@@ -130,34 +135,63 @@ async function scrapeEventPage(url: string): Promise<{ description: string; imag
     if (!res.ok) return { description: '', image_url: null, start_time: null, end_time: null }
     const html = await res.text()
 
-    const descM = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/)
-      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:description"/)
-      ?? html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/)
-      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/)
-      ?? html.match(/<meta[^>]+name="twitter:description"[^>]+content="([^"]+)"/)
-      ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+name="twitter:description"/)
-    let description = descM ? decodeEntities(descM[1]) : ''
+    // Meta description — try both attribute orderings and both quote styles
+    let description = ''
+    const metaPatterns = [
+      /<meta[^>]+property="og:description"[^>]+content="([^"]+)"/,
+      /<meta[^>]+content="([^"]+)"[^>]+property="og:description"/,
+      /<meta[^>]+property='og:description'[^>]+content='([^']+)'/,
+      /<meta[^>]+content='([^']+)'[^>]+property='og:description'/,
+      /<meta[^>]+name="description"[^>]+content="([^"]+)"/,
+      /<meta[^>]+content="([^"]+)"[^>]+name="description"/,
+      /<meta[^>]+name='description'[^>]+content='([^']+)'/,
+      /<meta[^>]+content='([^']+)'[^>]+name='description'/,
+      /<meta[^>]+name="twitter:description"[^>]+content="([^"]+)"/,
+      /<meta[^>]+content="([^"]+)"[^>]+name="twitter:description"/,
+    ]
+    for (const pat of metaPatterns) {
+      const m = html.match(pat)
+      if (m?.[1]) { description = decodeEntities(m[1]); break }
+    }
 
-    // JSON-LD description fallback
+    // JSON-LD description fallback — recurse into nested objects
     if (!description) {
       const jsonLdBlocks = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      function findDesc(obj: any): string {
+        if (!obj || typeof obj !== 'object') return ''
+        if (obj.description) return String(obj.description)
+        for (const val of Object.values(obj)) { const r = findDesc(val); if (r) return r }
+        return ''
+      }
       for (const block of jsonLdBlocks) {
+        if (description) break
         const inner = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
         try {
           const d = JSON.parse(inner)
           const items = Array.isArray(d) ? d : [d]
           for (const item of items) {
-            if (item.description) { description = decodeEntities(String(item.description)).trim(); break }
+            const r = findDesc(item)
+            if (r) { description = decodeEntities(r).trim(); break }
           }
         } catch { /* ignore */ }
-        if (description) break
       }
     }
 
-    // First substantial paragraph fallback
+    // Paragraph fallback — prefer content inside <article> or <main>
     if (!description) {
-      const pM = html.match(/<p[^>]*>([\s\S]{30,600}?)<\/p>/)
-      if (pM) description = decodeEntities(stripTags(pM[1])).trim()
+      const scopeM = html.match(/<(?:article|main)[^>]*>([\s\S]+?)<\/(?:article|main)>/i)
+      const scope = scopeM ? scopeM[1] : html
+      const pRe = /<p[^>]*>([\s\S]{40,800}?)<\/p>/g
+      let pM: RegExpExecArray | null
+      while ((pM = pRe.exec(scope)) !== null) {
+        const text = decodeEntities(stripTags(pM[1])).trim()
+        const lower = text.toLowerCase()
+        if (text.length >= 40 && !lower.includes('cookie') && !lower.includes('privacy policy') && !lower.includes('javascript')) {
+          description = text
+          break
+        }
+      }
     }
 
     let image_url: string | null = null
@@ -220,7 +254,7 @@ async function scrapeListingPage(url: string, defaultType: string): Promise<RawE
       end_time: detail.end_time ?? undefined,
       venue: card.location,
       suburb: 'Sydney CBD',
-      description: detail.description || undefined,
+      description: detail.description || card.description || undefined,
       image_url: detail.image_url ?? card.image_url ?? undefined,
       event_url: card.url,
       is_free: card.is_free,

@@ -303,7 +303,9 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       if (typeHint.includes('talk') || typeHint.includes('lecture')) event_type = 'talk'
       else if (typeHint.includes('tour')) event_type = 'heritage'
       else if (typeHint.includes('performance') || typeHint.includes('concert')) event_type = 'performance'
-      const isOngoingEvent = !end_date
+      // Only tag as ongoing if the page explicitly says so — don't use !end_date alone,
+      // which would make every exhibit without a closing date span the whole year
+      const isOngoingEvent = isOngoing && !end_date
       const tags = ['maritime-museum', is_free ? 'free' : 'ticketed']
       if (isOngoingEvent) tags.push('ongoing')
 
