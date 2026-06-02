@@ -4,16 +4,6 @@ import InstitutionView from '@/components/InstitutionView';
 
 export const revalidate = 3600;
 
-// dynamicParams defaults to true — paths not pre-generated are rendered on demand
-export const dynamicParams = true;
-
-export async function generateStaticParams() {
-  const events = await getEvents();
-  const names  = Array.from(new Set(events.map(e => e.institution)));
-  // Return raw names — Next.js handles URL encoding; do NOT encodeURIComponent here
-  return names.map(name => ({ name }));
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   return {
