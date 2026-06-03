@@ -254,6 +254,7 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       let start_date: string | null = null
       let end_date: string | null = null
+      let jsonLdTypes = ''   // accumulate @type values for event-type classification
 
       const jsonLdBlocks = pageHtml.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) ?? []
       // Pass 1: prefer event/exhibition-typed blocks
@@ -264,6 +265,7 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
           const items = Array.isArray(d) ? d : [d]
           for (const item of items) {
             const type = String(item['@type'] ?? '').toLowerCase()
+            jsonLdTypes += ' ' + type
             if (!type.includes('event') && !type.includes('exhibition')) continue
             if (item.startDate && !start_date) start_date = item.startDate.slice(0, 10)
             if (item.endDate && !end_date) end_date = item.endDate.slice(0, 10)
@@ -286,6 +288,35 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
           if (start_date) break
         }
       }
+
+      // Pass 2.5: __NEXT_DATA__ — Next.js embeds full server props as JSON in the page HTML.
+      // sea.museum renders the "When" section client-side so it won't appear in raw HTML, but
+      // startDate/endDate and category are always present in __NEXT_DATA__.
+      let nextDataTypeHint = ''
+      const nextDataM = pageHtml.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
+      if (nextDataM) {
+        try {
+          const nd = JSON.parse(nextDataM[1])
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          function findND(obj: any, key: string, depth = 0): string | null {
+            if (!obj || typeof obj !== 'object' || depth > 12) return null
+            if (key in obj && obj[key] != null) return String(obj[key])
+            for (const v of Object.values(obj)) { const r = findND(v, key, depth + 1); if (r) return r }
+            return null
+          }
+          if (!start_date) {
+            const sd = findND(nd, 'startDate') ?? findND(nd, 'start_date') ?? findND(nd, 'dateFrom')
+            if (sd && /^\d{4}-\d{2}-\d{2}/.test(sd)) start_date = sd.slice(0, 10)
+          }
+          if (!end_date) {
+            const ed = findND(nd, 'endDate') ?? findND(nd, 'end_date') ?? findND(nd, 'dateTo')
+            if (ed && /^\d{4}-\d{2}-\d{2}/.test(ed)) end_date = ed.slice(0, 10)
+          }
+          const cat = findND(nd, 'type') ?? findND(nd, 'category') ?? findND(nd, 'eventType') ?? findND(nd, 'tags') ?? ''
+          nextDataTypeHint = cat.toLowerCase()
+        } catch { /* ignore */ }
+      }
+
       const MONTH_ALT = 'January|February|March|April|May|June|July|August|September|October|November|December'
 
       // Pass 3: human-readable date in visible text (not ISO — too many false positives from scripts)
@@ -297,11 +328,11 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         }
       }
 
-      // Pass 4: end date from "closes / until / open until / through / ends on" patterns
-      // Run this even when start_date was found via JSON-LD, since endDate is often absent there
+      // Pass 4: end date from "closes / until / open until / through / ends on / now until" patterns
+      // Run even when start_date was found via JSON-LD, since endDate is often absent there
       if (!end_date) {
         const endRe = new RegExp(
-          `(?:closes?|closing|until|open\\s+until|ends?\\s+on|through|concludes?)\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+          `(?:closes?|closing|until|open\\s+until|now\\s+until|ends?\\s+on|through|concludes?|to)\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
           'i'
         )
         const endM = pageHtml.match(endRe)
@@ -324,7 +355,12 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
             end_date = endD
             if (!start_date) {
               const fallbackYear = rangeM[2].match(/(\d{4})/)?.[1]
-              const startD = parseDateStr(rangeM[1], fallbackYear)
+              let startD = parseDateStr(rangeM[1], fallbackYear)
+              // Cross-year range: roll start year back if start > end (same fix as SLNSW)
+              if (startD && startD > endD) {
+                const [sy, sm, sd] = startD.split('-')
+                startD = `${parseInt(sy) - 1}-${sm}-${sd}`
+              }
               if (startD) start_date = startD
             }
           }
@@ -343,13 +379,21 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       )
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
       if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
+      // If the booking button says "Closed" and we still couldn't extract a future end date,
+      // the exhibition has ended — skip it so deleted DB records don't get re-inserted
+      if (!end_date && !isOngoing && />\s*Closed\s*<\/(?:button|a|span)>/i.test(pageHtml)) {
+        console.log(`[maritime] ${slug}: booking closed, no end date found, skipping`)
+        continue
+      }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
-      const typeHint = (title + ' ' + description).toLowerCase()
+      // Include JSON-LD @types and __NEXT_DATA__ category for better classification
+      const typeHint = (title + ' ' + description + ' ' + jsonLdTypes + ' ' + nextDataTypeHint).toLowerCase()
       let event_type = 'exhibition'
-      if (typeHint.includes('talk') || typeHint.includes('lecture')) event_type = 'talk'
-      else if (typeHint.includes('tour')) event_type = 'heritage'
-      else if (typeHint.includes('performance') || typeHint.includes('concert')) event_type = 'performance'
+      if (typeHint.includes('festival') || typeHint.includes('festivalevent')) event_type = 'festival'
+      else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('educationevent')) event_type = 'talk'
+      else if (typeHint.includes('tour') || typeHint.includes('heritage')) event_type = 'heritage'
+      else if (typeHint.includes('performance') || typeHint.includes('concert') || typeHint.includes('performingevent')) event_type = 'performance'
       // Only tag as ongoing if the page explicitly says so — don't use !end_date alone,
       // which would make every exhibit without a closing date span the whole year
       const isOngoingEvent = isOngoing && !end_date

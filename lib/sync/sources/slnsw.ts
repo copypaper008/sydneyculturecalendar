@@ -138,11 +138,16 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
     if (rangeMatch) {
       // end date has year; need to infer year for start if missing
       const endParsed = parseDate(rangeMatch[2])
-      // Try to get start year from end
       const yearMatch = rangeMatch[2].match(/\d{4}/)
       const year = yearMatch ? yearMatch[0] : ''
       const startRaw = rangeMatch[1].includes(year) ? rangeMatch[1] : `${rangeMatch[1]} ${year}`
-      const startParsed = parseDate(startRaw)
+      let startParsed = parseDate(startRaw)
+      // Cross-year range: "14 November – 2 January 2026" → start year was inferred as 2026 but
+      // should be 2025. Roll it back one year if the parsed start is after the parsed end.
+      if (startParsed && endParsed && startParsed > endParsed) {
+        const [sy, sm, sd] = startParsed.split('-')
+        startParsed = `${parseInt(sy) - 1}-${sm}-${sd}`
+      }
       start_date = startParsed
       end_date = endParsed !== startParsed ? endParsed : null
     } else {
@@ -153,8 +158,15 @@ async function scrapeEventPage(path: string): Promise<EventDetails | null> {
         if (parsed && !dates.includes(parsed)) dates.push(parsed)
         if (dates.length >= 2) break
       }
-      if (dates.length >= 1) start_date = dates[0]
-      if (dates.length >= 2) end_date = dates[1]
+      if (dates.length >= 2) {
+        // Always assign the earlier date as start, later as end — guards against dates
+        // appearing in reverse order in the HTML (e.g., closing date mentioned first)
+        const [earlier, later] = dates[0] <= dates[1] ? [dates[0], dates[1]] : [dates[1], dates[0]]
+        start_date = earlier
+        end_date = later !== earlier ? later : null
+      } else if (dates.length === 1) {
+        start_date = dates[0]
+      }
     }
 
     // Time — look for patterns like "10:00am – 5:00pm" or "2pm"

@@ -28,6 +28,11 @@ export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
     if (raw.end_date && raw.end_date < today) { result.skipped++; continue }
     // Skip one-off past events (no end_date, not an exhibition, start_date past)
     if (!raw.end_date && raw.event_type !== 'exhibition' && raw.start_date < today) { result.skipped++; continue }
+    // Skip invalid date ranges (would violate DB constraint)
+    if (raw.end_date && raw.start_date && raw.end_date < raw.start_date) {
+      result.errors.push(`Skipping ${raw.source_id}: end_date ${raw.end_date} is before start_date ${raw.start_date}`)
+      result.skipped++; continue
+    }
 
     // Check if the event already exists
     const { data: existing, error: selectError } = await supabase
