@@ -27,6 +27,23 @@ function stripTags(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+const MONTHS: Record<string, string> = {
+  january: '01', february: '02', march: '03', april: '04',
+  may: '05', june: '06', july: '07', august: '08',
+  september: '09', october: '10', november: '11', december: '12',
+}
+
+/** Parse "14 March 2026" or "14 March" (with fallback year) into YYYY-MM-DD */
+function parseDateStr(raw: string, fallbackYear?: string): string | null {
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?/)
+  if (!m) return null
+  const month = MONTHS[m[2].toLowerCase()]
+  if (!month) return null
+  const year = m[3] ?? fallbackYear
+  if (!year) return null
+  return `${year}-${month}-${m[1].padStart(2, '0')}`
+}
+
 function parseTime(raw: string): string | null {
   const m = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i)
   if (!m) return null
@@ -107,17 +124,8 @@ function mapToRawEvent(item: any, today: string): RawEvent | null {
   if (!start_date) {
     const dateStr = item.date ?? item.when ?? item.dates ?? ''
     if (dateStr) {
-      const MONTHS: Record<string, string> = {
-        january: '01', february: '02', march: '03', april: '04',
-        may: '05', june: '06', july: '07', august: '08',
-        september: '09', october: '10', november: '11', december: '12',
-      }
-      const m = String(dateStr).match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/)
-      if (m) {
-        const day = m[1].padStart(2, '0')
-        const month = MONTHS[m[2].toLowerCase()]
-        if (month) start_date = `${m[3]}-${month}-${day}`
-      }
+      const d = parseDateStr(String(dateStr))
+      if (d) start_date = d
     }
   }
 
@@ -278,22 +286,61 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
           if (start_date) break
         }
       }
+      const MONTH_ALT = 'January|February|March|April|May|June|July|August|September|October|November|December'
+
       // Pass 3: human-readable date in visible text (not ISO — too many false positives from scripts)
       if (!start_date) {
-        const MONTHS: Record<string, string> = {
-          january: '01', february: '02', march: '03', april: '04',
-          may: '05', june: '06', july: '07', august: '08',
-          september: '09', october: '10', november: '11', december: '12',
-        }
-        const dateM = pageHtml.match(/(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/i)
+        const dateM = pageHtml.match(new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})\\s+(\\d{4})`, 'i'))
         if (dateM) {
           const month = MONTHS[dateM[2].toLowerCase()]
           if (month) start_date = `${dateM[3]}-${month}-${dateM[1].padStart(2, '0')}`
         }
       }
+
+      // Pass 4: end date from "closes / until / open until / through / ends on" patterns
+      // Run this even when start_date was found via JSON-LD, since endDate is often absent there
+      if (!end_date) {
+        const endRe = new RegExp(
+          `(?:closes?|closing|until|open\\s+until|ends?\\s+on|through|concludes?)\\s+(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+          'i'
+        )
+        const endM = pageHtml.match(endRe)
+        if (endM) {
+          const d = parseDateStr(endM[1])
+          if (d) end_date = d
+        }
+      }
+
+      // Pass 5: date range "14 March – 31 August 2026" — captures end date even when start found via JSON-LD
+      if (!end_date) {
+        const rangeRe = new RegExp(
+          `(\\d{1,2}\\s+(?:${MONTH_ALT})(?:\\s+\\d{4})?)\\s*[–\\-—]\\s*(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+          'i'
+        )
+        const rangeM = pageHtml.match(rangeRe)
+        if (rangeM) {
+          const endD = parseDateStr(rangeM[2])
+          if (endD) {
+            end_date = endD
+            if (!start_date) {
+              const fallbackYear = rangeM[2].match(/(\d{4})/)?.[1]
+              const startD = parseDateStr(rangeM[1], fallbackYear)
+              if (startD) start_date = startD
+            }
+          }
+        }
+      }
+
       console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
-      const isOngoing = /\b(now on|now open|permanent|ongoing)\b/i.test(pageHtml)
+      // "Permanent" must appear as a phrase with a content word, not just in "permanent link" etc.
+      // "now on" / "now open" are reliable museum idioms for currently-displayed work.
+      const isOngoing = (
+        /\bnow\s+on\b/i.test(pageHtml) ||
+        /\bnow\s+open\b/i.test(pageHtml) ||
+        /\bpermanent\s+(?:exhibition|collection|display|gallery|attraction|feature|installation)\b/i.test(pageHtml) ||
+        /\bpermanent\b/i.test(title)
+      )
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
       if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
 

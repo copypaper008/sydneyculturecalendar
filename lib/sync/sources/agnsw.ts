@@ -187,7 +187,7 @@ async function scrapeEventPage(url: string): Promise<{ description: string; imag
       while ((pM = pRe.exec(scope)) !== null) {
         const text = decodeEntities(stripTags(pM[1])).trim()
         const lower = text.toLowerCase()
-        if (text.length >= 40 && !lower.includes('cookie') && !lower.includes('privacy policy') && !lower.includes('javascript')) {
+        if (text.length >= 40 && !lower.includes('cookie') && !lower.includes('privacy policy') && !lower.includes('javascript') && !lower.includes('custodians') && !lower.includes('we acknowledge')) {
           description = text
           break
         }
