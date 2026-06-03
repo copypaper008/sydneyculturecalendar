@@ -343,6 +343,12 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
       )
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
       if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
+      // If the booking button says "Closed" and we still couldn't extract a future end date,
+      // the exhibition has ended — skip it so deleted DB records don't get re-inserted
+      if (!end_date && !isOngoing && />\s*Closed\s*<\/(?:button|a|span)>/i.test(pageHtml)) {
+        console.log(`[maritime] ${slug}: booking closed, no end date found, skipping`)
+        continue
+      }
 
       const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
       const typeHint = (title + ' ' + description).toLowerCase()
