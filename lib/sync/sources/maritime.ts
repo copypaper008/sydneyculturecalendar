@@ -340,8 +340,23 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
             if (v) start_date = v.slice(0, 10)
           }
 
-          const catV = findND(searchRoot, ['category', 'eventType', 'eventCategory', 'type', 'tags'])
-          if (catV) nextDataTypeHint = catV.toLowerCase()
+          // Collect ALL category/type/tag values from pageProps (not just the first)
+          // so "permanent" in a tags array is captured alongside the event type.
+          const typeKeys = ['category', 'eventType', 'eventCategory', 'type', 'tags', 'topics', 'labels', 'filters']
+          const rawTypeHints: string[] = []
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          function collectTypeHints(obj: any, depth = 0): void {
+            if (!obj || typeof obj !== 'object' || depth > 6) return
+            for (const key of typeKeys) {
+              if (key in obj && obj[key] != null) {
+                const v = obj[key]
+                rawTypeHints.push(Array.isArray(v) ? v.map(String).join(' ') : String(v))
+              }
+            }
+            for (const val of Object.values(obj)) collectTypeHints(val, depth + 1)
+          }
+          collectTypeHints(searchRoot)
+          nextDataTypeHint = rawTypeHints.join(' ').toLowerCase()
         } catch { /* ignore */ }
       }
 
@@ -397,10 +412,18 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
-      // "now on" / "now open" appear as generic current-exhibition marketing language on
-      // every sea.museum page — they do NOT indicate a permanent/ongoing exhibit.
-      // Only flag as ongoing when the page explicitly describes the content as permanent.
+      // Detect truly permanent/ongoing exhibits using sea.museum's own signals:
+      // 1. __NEXT_DATA__ tags/category array contains "Permanent" (CMS data, most reliable)
+      // 2. Page links to /topics/permanent — sea.museum adds this to "Related topics" chips
+      //    for permanent exhibits, not site-wide navigation
+      // 3. "Permanent Exhibit" appears as the date display string (embedded in __NEXT_DATA__)
+      // 4. Explicit "permanent exhibition/collection" prose in the page
+      // 5. "Permanent" in the event title
+      // "now on" / "now open" are NOT included — they appear on every current exhibition.
       const isOngoing = (
+        nextDataTypeHint.includes('permanent') ||
+        /href="[^"]*\/topics\/permanent\b/i.test(pageHtml) ||
+        /\bpermanent\s+exhibit/i.test(pageHtml) ||
         /\bpermanent\s+(?:exhibition|collection|display|gallery|attraction|feature|installation)\b/i.test(pageHtml) ||
         /\bon\s+permanent\s+display\b/i.test(pageHtml) ||
         /\bpermanent\b/i.test(title)
