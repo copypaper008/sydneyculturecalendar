@@ -289,31 +289,59 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         }
       }
 
-      // Pass 2.5: __NEXT_DATA__ — Next.js embeds full server props as JSON in the page HTML.
-      // sea.museum renders the "When" section client-side so it won't appear in raw HTML, but
-      // startDate/endDate and category are always present in __NEXT_DATA__.
+      // Pass 2.5: __NEXT_DATA__ — sea.museum renders its "When" section client-side; dates
+      // live exclusively in this JSON blob and are absent from the visible HTML.
       let nextDataTypeHint = ''
       const nextDataM = pageHtml.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
       if (nextDataM) {
+        const ndStr = nextDataM[1]
+
+        // Strategy A: raw-string regex on the serialised JSON — finds the first ISO date
+        // assigned to a known date field anywhere in the blob, handling any nesting depth.
+        // Using the raw string avoids deep-recursion false positives from navigation or
+        // related-event objects that can shadow the main event's dates in a parsed tree.
+        if (!end_date) {
+          const m = ndStr.match(/"(?:endDate|end_date|dateTo|closingDate|closeDate|eventEndDate|dateEnd|endAt|closesOn|eventEnd)"\s*:\s*"(\d{4}-\d{2}-\d{2}[^"]{0,30})"/)
+          if (m) end_date = m[1].slice(0, 10)
+        }
+        if (!start_date) {
+          const m = ndStr.match(/"(?:startDate|start_date|dateFrom|eventStartDate|openingDate|dateStart)"\s*:\s*"(\d{4}-\d{2}-\d{2}[^"]{0,30})"/)
+          if (m) start_date = m[1].slice(0, 10)
+        }
+
+        // Strategy B: parsed JSON scoped to pageProps — avoids false positives from
+        // site-wide navigation and build metadata that live outside pageProps.
         try {
-          const nd = JSON.parse(nextDataM[1])
+          const nd = JSON.parse(ndStr)
+          const searchRoot = nd?.props?.pageProps ?? nd
+
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          function findND(obj: any, key: string, depth = 0): string | null {
-            if (!obj || typeof obj !== 'object' || depth > 12) return null
-            if (key in obj && obj[key] != null) return String(obj[key])
-            for (const v of Object.values(obj)) { const r = findND(v, key, depth + 1); if (r) return r }
+          function findND(obj: any, keys: string[], depth = 0): string | null {
+            if (!obj || typeof obj !== 'object' || depth > 8) return null
+            for (const key of keys) {
+              if (key in obj && obj[key] != null) {
+                const v = String(obj[key])
+                if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v
+              }
+            }
+            for (const v of Object.values(obj)) {
+              const r = findND(v, keys, depth + 1)
+              if (r) return r
+            }
             return null
           }
-          if (!start_date) {
-            const sd = findND(nd, 'startDate') ?? findND(nd, 'start_date') ?? findND(nd, 'dateFrom')
-            if (sd && /^\d{4}-\d{2}-\d{2}/.test(sd)) start_date = sd.slice(0, 10)
-          }
+
           if (!end_date) {
-            const ed = findND(nd, 'endDate') ?? findND(nd, 'end_date') ?? findND(nd, 'dateTo')
-            if (ed && /^\d{4}-\d{2}-\d{2}/.test(ed)) end_date = ed.slice(0, 10)
+            const v = findND(searchRoot, ['endDate', 'end_date', 'dateTo', 'closingDate', 'closeDate', 'dateEnd', 'endAt', 'closesOn', 'eventEnd'])
+            if (v) end_date = v.slice(0, 10)
           }
-          const cat = findND(nd, 'type') ?? findND(nd, 'category') ?? findND(nd, 'eventType') ?? findND(nd, 'tags') ?? ''
-          nextDataTypeHint = cat.toLowerCase()
+          if (!start_date) {
+            const v = findND(searchRoot, ['startDate', 'start_date', 'dateFrom', 'openingDate', 'dateStart', 'eventStartDate'])
+            if (v) start_date = v.slice(0, 10)
+          }
+
+          const catV = findND(searchRoot, ['category', 'eventType', 'eventCategory', 'type', 'tags'])
+          if (catV) nextDataTypeHint = catV.toLowerCase()
         } catch { /* ignore */ }
       }
 
@@ -369,12 +397,12 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
-      // "Permanent" must appear as a phrase with a content word, not just in "permanent link" etc.
-      // "now on" / "now open" are reliable museum idioms for currently-displayed work.
+      // "now on" / "now open" appear as generic current-exhibition marketing language on
+      // every sea.museum page — they do NOT indicate a permanent/ongoing exhibit.
+      // Only flag as ongoing when the page explicitly describes the content as permanent.
       const isOngoing = (
-        /\bnow\s+on\b/i.test(pageHtml) ||
-        /\bnow\s+open\b/i.test(pageHtml) ||
         /\bpermanent\s+(?:exhibition|collection|display|gallery|attraction|feature|installation)\b/i.test(pageHtml) ||
+        /\bon\s+permanent\s+display\b/i.test(pageHtml) ||
         /\bpermanent\b/i.test(title)
       )
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
