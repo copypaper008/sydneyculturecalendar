@@ -377,6 +377,47 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       const MONTH_ALT = 'January|February|March|April|May|June|July|August|September|October|November|December'
 
+      // Pass 2.7: sea.museum's DatesEl — the most reliable source.
+      // DevTools confirms the server renders: <p data-element="DatesEl" class="p-small">22 May - 13 June 2026</p>
+      // This is a stable, purpose-built element; target it before falling back to generic text scanning.
+      if (!start_date || !end_date) {
+        const datesElM = pageHtml.match(/data-element="DatesEl"[^>]*>([\s\S]{1,200}?)<\//)
+        if (datesElM) {
+          const dateText = decodeEntities(stripTags(datesElM[1])).replace(/\s+/g, ' ').trim()
+          console.log(`[maritime] ${slug}: DatesEl="${dateText}"`)
+
+          const rangeRe = new RegExp(
+            `(\\d{1,2}\\s+(?:${MONTH_ALT})(?:\\s+\\d{4})?)\\s*[–\\-—]\\s*(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+            'i'
+          )
+          const rangeM = dateText.match(rangeRe)
+          if (rangeM) {
+            const endD = parseDateStr(rangeM[2])
+            if (endD) {
+              if (!end_date) end_date = endD
+              if (!start_date) {
+                const fallbackYear = rangeM[2].match(/(\d{4})/)?.[1]
+                let startD = parseDateStr(rangeM[1], fallbackYear)
+                if (startD && startD > endD) {
+                  const [sy, sm, sd] = startD.split('-')
+                  startD = `${parseInt(sy) - 1}-${sm}-${sd}`
+                }
+                if (startD) start_date = startD
+              }
+            }
+          } else if (!start_date) {
+            // Single date: "14 June 2026"
+            const singleM = dateText.match(new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})\\s+(\\d{4})`, 'i'))
+            if (singleM) {
+              const month = MONTHS[singleM[2].toLowerCase()]
+              if (month) start_date = `${singleM[3]}-${month}-${singleM[1].padStart(2, '0')}`
+            }
+          }
+          // "Open daily", "Open daily*", "Permanent Exhibit" etc. won't match date patterns —
+          // those are handled by isOngoing detection via the Permanent topic tag
+        }
+      }
+
       // Pass 3: human-readable date in visible text (not ISO — too many false positives from scripts)
       if (!start_date) {
         const dateM = pageHtml.match(new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})\\s+(\\d{4})`, 'i'))
