@@ -342,6 +342,7 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
           // Collect ALL category/type/tag values from pageProps (not just the first)
           // so "permanent" in a tags array is captured alongside the event type.
+          // Handle nested objects (e.g. "type": {"name":"Festival"}) by extracting their strings.
           const typeKeys = ['category', 'eventType', 'eventCategory', 'type', 'tags', 'topics', 'labels', 'filters']
           const rawTypeHints: string[] = []
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -350,13 +351,27 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
             for (const key of typeKeys) {
               if (key in obj && obj[key] != null) {
                 const v = obj[key]
-                rawTypeHints.push(Array.isArray(v) ? v.map(String).join(' ') : String(v))
+                if (Array.isArray(v)) {
+                  rawTypeHints.push(v.map(item => typeof item === 'object' && item !== null
+                    ? Object.values(item).filter(x => typeof x === 'string').join(' ')
+                    : String(item)).join(' '))
+                } else if (typeof v === 'object') {
+                  rawTypeHints.push(Object.values(v).filter(x => typeof x === 'string').join(' '))
+                } else {
+                  rawTypeHints.push(String(v))
+                }
               }
             }
             for (const val of Object.values(obj)) collectTypeHints(val, depth + 1)
           }
           collectTypeHints(searchRoot)
           nextDataTypeHint = rawTypeHints.join(' ').toLowerCase()
+
+          // Debug: log pageProps structure when dates are still missing after all strategies.
+          // Check Vercel function logs after a sync to see what field names sea.museum uses.
+          if (!start_date && !end_date) {
+            console.log(`[maritime] ${slug}: no dates found. pageProps sample:`, JSON.stringify(searchRoot).slice(0, 800))
+          }
         } catch { /* ignore */ }
       }
 
@@ -437,14 +452,21 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         continue
       }
 
-      const is_free = /\bfree\b/i.test(pageHtml) && !/ticketed|charges apply/i.test(pageHtml)
-      // Include JSON-LD @types and __NEXT_DATA__ category for better classification
+      // Vessels like HMAS Onslow show "Infant: Free" and "Member: Free" inside a pricing table
+      // but are NOT free to attend — the "Entry fees" heading or "Adult: $XX" pattern signals paid.
+      const hasPricedTickets = /entry\s+fees?|adult[:\s]+\$|family[:\s]+\$|concession[:\s]+\$/i.test(pageHtml)
+      const is_free = !hasPricedTickets && /\bfree\b/i.test(pageHtml)
+
+      // Type classification: title + description + JSON-LD @type values + all CMS category/tag fields
       const typeHint = (title + ' ' + description + ' ' + jsonLdTypes + ' ' + nextDataTypeHint).toLowerCase()
       let event_type = 'exhibition'
       if (typeHint.includes('festival') || typeHint.includes('festivalevent')) event_type = 'festival'
-      else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('educationevent')) event_type = 'talk'
-      else if (typeHint.includes('tour') || typeHint.includes('heritage')) event_type = 'heritage'
-      else if (typeHint.includes('performance') || typeHint.includes('concert') || typeHint.includes('performingevent')) event_type = 'performance'
+      else if (typeHint.includes('talk') || typeHint.includes('lecture') || typeHint.includes('panel') ||
+               typeHint.includes('forum') || typeHint.includes('seminar') || typeHint.includes('educationevent')) event_type = 'talk'
+      else if (typeHint.includes('tour') || typeHint.includes('heritage') || typeHint.includes('walk')) event_type = 'heritage'
+      else if (typeHint.includes('performance') || typeHint.includes('concert') ||
+               typeHint.includes('music') || typeHint.includes('performingevent')) event_type = 'performance'
+      else if (typeHint.includes('workshop') || typeHint.includes('class') || typeHint.includes('program')) event_type = 'talk'
       // Only tag as ongoing if the page explicitly says so — don't use !end_date alone,
       // which would make every exhibit without a closing date span the whole year
       const isOngoingEvent = isOngoing && !end_date
