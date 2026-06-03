@@ -52,15 +52,19 @@ function clampDayOfYear(iso: string, year: number): number {
   return Math.floor((clamp.getTime() - yS.getTime()) / 86_400_000) + 1;
 }
 
-function eventBar(event: Event, year: number): { left: number; width: number } {
-  const total   = daysInYear(year);
-  const start   = clampDayOfYear(event.start_date, year);
-  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
-  // Ongoing events with no end_date extend to year-end so they span the full remaining year
-  const effectiveEnd = event.end_date || (isOngoing ? `${year}-12-31` : event.start_date);
-  const end     = clampDayOfYear(effectiveEnd, year);
-  const left    = (start - 1) / total * 100;
-  const width   = Math.max((end - start + 1) / total * 100, 0.8);
+function eventBar(event: Event, year: number, todayISO: string): { left: number; width: number } {
+  const total      = daysInYear(year);
+  const start      = clampDayOfYear(event.start_date, year);
+  const isOngoing  = Array.isArray(event.tags) && event.tags.includes('ongoing');
+  // Three states:
+  //  1. Has end_date → show to that date
+  //  2. 'ongoing' tag, no end_date → show to year-end with stripes
+  //  3. No end_date, not ongoing → "closing TBA": show from start up to today (currently showing)
+  const effectiveEnd = event.end_date
+    ?? (isOngoing ? `${year}-12-31` : (todayISO || event.start_date));
+  const end    = clampDayOfYear(effectiveEnd, year);
+  const left   = (start - 1) / total * 100;
+  const width  = Math.max((end - start + 1) / total * 100, 0.8);
   return { left, width };
 }
 
@@ -86,14 +90,16 @@ function todayLeft(year: number): number | null {
 }
 
 // Greedy interval scheduling — assigns each event a lane index (0-based)
-function assignLanes(events: Event[], year: number): { event: Event; lane: number; bar: { left: number; width: number } }[] {
+function assignLanes(events: Event[], year: number, todayISO: string): { event: Event; lane: number; bar: { left: number; width: number } }[] {
   const items = events
-    .map(e => ({ event: e, bar: eventBar(e, year) }))
+    .map(e => ({ event: e, bar: eventBar(e, year, todayISO) }))
     .sort((a, b) => a.event.start_date.localeCompare(b.event.start_date));
 
-  const laneEnd: string[] = []; // last end_date committed to each lane
+  const laneEnd: string[] = [];
   return items.map(({ event, bar }) => {
-    const endISO = event.end_date || event.start_date;
+    const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
+    // Use the same effective end as eventBar for accurate lane packing
+    const endISO = event.end_date ?? (isOngoing ? `${year}-12-31` : (todayISO || event.start_date));
     let lane = laneEnd.findIndex(end => end < event.start_date);
     if (lane === -1) { lane = laneEnd.length; laneEnd.push(endISO); }
     else laneEnd[lane] = endISO;
@@ -153,18 +159,43 @@ export default function YearCalendar({ events }: { events: Event[] }) {
   const months = useMemo(() => monthPositions(year), [year]);
 
   // Filter + group by institution
-  const yearEvents = useMemo(() => events.filter(e => {
-    const sY = parseInt(e.start_date.slice(0, 4));
-    const eY = e.end_date ? parseInt(e.end_date.slice(0, 4)) : sY;
-    if (sY > year || eY < year) return false;
-    if (!activeTypes.has(e.event_type)) return false;
-    // In the current calendar year, hide events that have already ended
-    if (todayISO && year === parseInt(todayISO.slice(0, 4))) {
+  const yearEvents = useMemo(() => {
+    const curY = todayISO ? parseInt(todayISO.slice(0, 4)) : 0;
+    // 18 months ago — cutoff for "closing TBA" events; older ones are likely closed
+    const cutoffISO = todayISO
+      ? (() => { const d = new Date(todayISO); d.setMonth(d.getMonth() - 18); return d.toISOString().slice(0, 10); })()
+      : '';
+
+    return events.filter(e => {
+      const sY       = parseInt(e.start_date.slice(0, 4));
       const isOngoing = Array.isArray(e.tags) && e.tags.includes('ongoing');
-      if (!isOngoing && (e.end_date || e.start_date) < todayISO) return false;
-    }
-    return true;
-  }), [events, year, activeTypes, todayISO]);
+
+      // ── Year-range gate ──────────────────────────────────────────────────────
+      if (sY > year) return false;  // event hasn't started yet in this year
+
+      if (e.end_date) {
+        // Dated events: only show in years the event actually spans
+        if (parseInt(e.end_date.slice(0, 4)) < year) return false;
+      } else if (isOngoing) {
+        // Ongoing: show in every year from start year onwards (no gate needed)
+      } else {
+        // Closing TBA: only meaningful in the current year (or start year if viewing past)
+        if (year !== curY && year !== sY) return false;
+      }
+
+      if (!activeTypes.has(e.event_type)) return false;
+
+      // ── Current-year recency filter ──────────────────────────────────────────
+      if (todayISO && year === curY) {
+        if (isOngoing) return true;
+        if (e.end_date) return e.end_date >= todayISO;   // hide definitively past events
+        // Closing TBA: hide if started more than 18 months ago (probably already closed)
+        return cutoffISO ? e.start_date >= cutoffISO : true;
+      }
+
+      return true;
+    });
+  }, [events, year, activeTypes, todayISO]);
 
   const institutions = useMemo(() => {
     const map = new Map<string, Event[]>();
@@ -291,7 +322,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
           {/* Institution rows */}
           {institutions.map(([institution, instEvents], rowIdx) => {
-            const lanes         = assignLanes(instEvents, year);
+            const lanes         = assignLanes(instEvents, year, todayISO);
             const allLanes      = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
             const isExpanded    = expanded.has(institution);
             const numLanes      = isExpanded ? allLanes : Math.min(allLanes, MAX_LANES);
@@ -373,10 +404,13 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                     const wide     = bar.width > 7;
                     const medium   = bar.width > 3;
                     const ongoing  = Array.isArray(event.tags) && event.tags.includes('ongoing');
-                    // Ongoing events get diagonal stripes; dated events get a flat tint
+                    const closingTBA = !event.end_date && !ongoing;
+                    // ongoing → diagonal stripes; closing TBA → flat tint, dashed border; dated → flat tint, solid border
                     const barBg    = ongoing
                       ? `repeating-linear-gradient(45deg, ${color}2a 0px, ${color}2a 5px, ${color}0c 5px, ${color}0c 10px)`
                       : `${color}1f`;
+                    const barBorder = closingTBA ? `1.5px dashed ${color}` : `1.5px solid ${color}`;
+                    const subLabel  = ongoing ? 'Ongoing' : closingTBA ? 'Closing TBA' : fmtDate(event);
 
                     return (
                       <div
@@ -392,7 +426,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                           <div style={{
                             height: '100%', borderRadius: 6,
                             background: barBg,
-                            border: `1.5px solid ${color}`,
+                            border: barBorder,
                             padding: '3px 7px',
                             overflow: 'hidden',
                             display: 'flex', flexDirection: 'column', justifyContent: 'center',
@@ -405,7 +439,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                             )}
                             {wide && (
                               <p style={{ margin: '1px 0 0', fontSize: '.6rem', color: 'var(--colour-muted)', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {ongoing ? 'Ongoing' : fmtDate(event)}
+                                {subLabel}
                               </p>
                             )}
                           </div>
@@ -475,7 +509,11 @@ export default function YearCalendar({ events }: { events: Event[] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>
               <Calendar size={12} style={{ flexShrink: 0 }} />
-              {Array.isArray(tooltip.event.tags) && tooltip.event.tags.includes('ongoing') ? 'Ongoing' : fmtDate(tooltip.event)}
+              {Array.isArray(tooltip.event.tags) && tooltip.event.tags.includes('ongoing')
+                ? 'Ongoing'
+                : !tooltip.event.end_date
+                  ? `Opens ${new Date(tooltip.event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} · Closing date TBA`
+                  : fmtDate(tooltip.event)}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>
               <Tag size={12} style={{ flexShrink: 0 }} />
