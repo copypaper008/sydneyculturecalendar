@@ -212,10 +212,11 @@ function EventGantt({ event }: { event: Event }) {
 export default function EventDetail({ event, relatedEvents }: { event: Event; relatedEvents?: Event[] }) {
   const startTime = formatTime(event.start_time);
   const endTime = formatTime(event.end_time);
+  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
 
   const meta = [
     { label: 'Institution', value: event.institution, href: `/institutions/${toInstitutionSlug(event.institution)}` },
-    { label: 'Dates', value: formatDateRange(event.start_date, event.end_date) },
+    { label: 'Dates', value: isOngoing ? 'Permanent exhibition' : formatDateRange(event.start_date, event.end_date) },
     startTime ? { label: 'Time', value: endTime ? `${startTime} – ${endTime}` : startTime } : null,
     event.venue ? { label: 'Venue', value: event.venue } : null,
     event.suburb ? { label: 'Suburb', value: event.suburb } : null,
