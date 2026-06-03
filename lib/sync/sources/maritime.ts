@@ -377,44 +377,53 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       const MONTH_ALT = 'January|February|March|April|May|June|July|August|September|October|November|December'
 
-      // Pass 2.7: sea.museum's DatesEl — the most reliable source.
-      // DevTools confirms the server renders: <p data-element="DatesEl" class="p-small">22 May - 13 June 2026</p>
-      // This is a stable, purpose-built element; target it before falling back to generic text scanning.
-      if (!start_date || !end_date) {
-        const datesElM = pageHtml.match(/data-element="DatesEl"[^>]*>([\s\S]{1,200}?)<\//)
+      // Pass 2.7: sea.museum's DatesEl — the most authoritative source, server-rendered for display.
+      // Run unconditionally so it can correct wrong dates extracted from __NEXT_DATA__ (which can
+      // accidentally pick up dates from a related/embedded permanent exhibit on the same page).
+      // Use </p> as the match boundary so the capture includes any nested <span> elements.
+      let datesElHasDates = false
+      let datesElIsPermanent = false
+      {
+        const datesElM = pageHtml.match(/data-element="DatesEl"[^>]*>([\s\S]{1,500}?)<\/p>/)
         if (datesElM) {
           const dateText = decodeEntities(stripTags(datesElM[1])).replace(/\s+/g, ' ').trim()
           console.log(`[maritime] ${slug}: DatesEl="${dateText}"`)
 
-          const rangeRe = new RegExp(
-            `(\\d{1,2}\\s+(?:${MONTH_ALT})(?:\\s+\\d{4})?)\\s*[–\\-—]\\s*(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
-            'i'
-          )
-          const rangeM = dateText.match(rangeRe)
-          if (rangeM) {
-            const endD = parseDateStr(rangeM[2])
-            if (endD) {
-              if (!end_date) end_date = endD
-              if (!start_date) {
-                const fallbackYear = rangeM[2].match(/(\d{4})/)?.[1]
-                let startD = parseDateStr(rangeM[1], fallbackYear)
-                if (startD && startD > endD) {
-                  const [sy, sm, sd] = startD.split('-')
-                  startD = `${parseInt(sy) - 1}-${sm}-${sd}`
+          if (/permanent/i.test(dateText) || /open\s+daily/i.test(dateText)) {
+            datesElIsPermanent = true
+          } else {
+            const rangeRe = new RegExp(
+              `(\\d{1,2}\\s+(?:${MONTH_ALT})(?:\\s+\\d{4})?)\\s*[–\\-—]\\s*(\\d{1,2}\\s+(?:${MONTH_ALT})\\s+\\d{4})`,
+              'i'
+            )
+            const rangeM = dateText.match(rangeRe)
+            if (rangeM) {
+              const endD = parseDateStr(rangeM[2])
+              if (endD) {
+                datesElHasDates = true
+                end_date = endD  // DatesEl is canonical — override any prior extraction
+                if (!start_date) {
+                  const fallbackYear = rangeM[2].match(/(\d{4})/)?.[1]
+                  let startD = parseDateStr(rangeM[1], fallbackYear)
+                  if (startD && startD > endD) {
+                    const [sy, sm, sd] = startD.split('-')
+                    startD = `${parseInt(sy) - 1}-${sm}-${sd}`
+                  }
+                  if (startD) start_date = startD
                 }
-                if (startD) start_date = startD
+              }
+            } else {
+              // Single date: "14 June 2026"
+              const singleM = dateText.match(new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})\\s+(\\d{4})`, 'i'))
+              if (singleM) {
+                const month = MONTHS[singleM[2].toLowerCase()]
+                if (month) {
+                  start_date = `${singleM[3]}-${month}-${singleM[1].padStart(2, '0')}`
+                  datesElHasDates = true
+                }
               }
             }
-          } else if (!start_date) {
-            // Single date: "14 June 2026"
-            const singleM = dateText.match(new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})\\s+(\\d{4})`, 'i'))
-            if (singleM) {
-              const month = MONTHS[singleM[2].toLowerCase()]
-              if (month) start_date = `${singleM[3]}-${month}-${singleM[1].padStart(2, '0')}`
-            }
           }
-          // "Open daily", "Open daily*", "Permanent Exhibit" etc. won't match date patterns —
-          // those are handled by isOngoing detection via the Permanent topic tag
         }
       }
 
@@ -468,16 +477,11 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
-      // Detect truly permanent/ongoing exhibits using sea.museum's own signals (most → least reliable):
-      // 1. data-value="Permanent" on a TagEl — DevTools confirms sea.museum renders Related Topics
-      //    chips as <span data-element="TagEl" data-value="Permanent">, directly in the HTML
-      // 2. __NEXT_DATA__ tags/category contains "permanent"
-      // 3. href="/topics/permanent" link (same chips, but attribute-order may vary)
-      // 4. "Permanent Exhibit" as the DatesEl display text
-      // 5. "permanent exhibition/collection/display/gallery" prose
-      // 6. "Permanent" in the event title
-      // "now on" / "now open" are NOT included — they appear on every current exhibition page.
-      const isOngoing = (
+      // Detect truly permanent/ongoing exhibits.
+      // DatesEl is the primary signal: if it shows actual dates, the event is NOT ongoing even if
+      // the page body references a permanent exhibit (e.g. Vivid referencing Ur Wayii).
+      // Only apply HTML-scanning fallbacks when DatesEl is absent.
+      const isOngoing = datesElIsPermanent || (!datesElHasDates && (
         /data-value="Permanent"/i.test(pageHtml) ||
         nextDataTypeHint.includes('permanent') ||
         /href="[^"]*\/topics\/permanent\b/i.test(pageHtml) ||
@@ -485,7 +489,7 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         /\bpermanent\s+(?:exhibition|collection|display|gallery|attraction|feature|installation)\b/i.test(pageHtml) ||
         /\bon\s+permanent\s+display\b/i.test(pageHtml) ||
         /\bpermanent\b/i.test(title)
-      )
+      ))
       if (!start_date && !isOngoing) { console.log(`[maritime] ${slug}: no date`); continue }
       if (end_date && end_date < today) { console.log(`[maritime] ${slug}: past`); continue }
       // If the booking button says "Closed" and we still couldn't extract a future end date,
@@ -495,9 +499,9 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
         continue
       }
 
-      // Vessels like HMAS Onslow show "Infant: Free" and "Member: Free" inside a pricing table
-      // but are NOT free to attend — the "Entry fees" heading or "Adult: $XX" pattern signals paid.
-      const hasPricedTickets = /entry\s+fees?|adult[:\s]+\$|family[:\s]+\$|concession[:\s]+\$/i.test(pageHtml)
+      // Vessels like HMAS Onslow show "Infant: Free" / "Member: Free" but are NOT free overall.
+      // Festivals like Vivid say "mix of FREE and PAID activities" — also not entirely free.
+      const hasPricedTickets = /entry\s+fees?|adult[:\s]+\$|family[:\s]+\$|concession[:\s]+\$|paid\s+(?:activit|ticket|admission)/i.test(pageHtml)
       const is_free = !hasPricedTickets && /\bfree\b/i.test(pageHtml)
 
       // Type classification: title + description + JSON-LD @type values + all CMS category/tag fields
