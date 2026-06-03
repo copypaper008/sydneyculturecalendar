@@ -468,15 +468,17 @@ async function fetchFromSitemap(): Promise<RawEvent[]> {
 
       console.log(`[maritime] ${slug}: start=${start_date} end=${end_date}`)
 
-      // Detect truly permanent/ongoing exhibits using sea.museum's own signals:
-      // 1. __NEXT_DATA__ tags/category array contains "Permanent" (CMS data, most reliable)
-      // 2. Page links to /topics/permanent — sea.museum adds this to "Related topics" chips
-      //    for permanent exhibits, not site-wide navigation
-      // 3. "Permanent Exhibit" appears as the date display string (embedded in __NEXT_DATA__)
-      // 4. Explicit "permanent exhibition/collection" prose in the page
-      // 5. "Permanent" in the event title
-      // "now on" / "now open" are NOT included — they appear on every current exhibition.
+      // Detect truly permanent/ongoing exhibits using sea.museum's own signals (most → least reliable):
+      // 1. data-value="Permanent" on a TagEl — DevTools confirms sea.museum renders Related Topics
+      //    chips as <span data-element="TagEl" data-value="Permanent">, directly in the HTML
+      // 2. __NEXT_DATA__ tags/category contains "permanent"
+      // 3. href="/topics/permanent" link (same chips, but attribute-order may vary)
+      // 4. "Permanent Exhibit" as the DatesEl display text
+      // 5. "permanent exhibition/collection/display/gallery" prose
+      // 6. "Permanent" in the event title
+      // "now on" / "now open" are NOT included — they appear on every current exhibition page.
       const isOngoing = (
+        /data-value="Permanent"/i.test(pageHtml) ||
         nextDataTypeHint.includes('permanent') ||
         /href="[^"]*\/topics\/permanent\b/i.test(pageHtml) ||
         /\bpermanent\s+exhibit/i.test(pageHtml) ||
