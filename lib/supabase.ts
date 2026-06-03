@@ -31,14 +31,28 @@ function interleaveOngoing(events: Event[]): Event[] {
 const SCHOOL_RE = /\bschool\b/i
 
 function filterEvents(events: Event[]): Event[] {
-  return events.filter(e => !SCHOOL_RE.test(e.title) && !SCHOOL_RE.test(e.description ?? ''))
+  const today   = new Date().toISOString().slice(0, 10)
+  const cutoff  = new Date(); cutoff.setMonth(cutoff.getMonth() - 18)
+  const cutoffISO = cutoff.toISOString().slice(0, 10)
+
+  return events.filter(e => {
+    if (SCHOOL_RE.test(e.title) || SCHOOL_RE.test(e.description ?? '')) return false
+    // Exclude events with a known past end date
+    if (e.end_date && e.end_date < today) return false
+    // Exclude no-end-date events older than 18 months unless explicitly ongoing (permanent)
+    const isOngoing = Array.isArray(e.tags) && e.tags.includes('ongoing')
+    if (!e.end_date && !isOngoing && e.start_date < cutoffISO) return false
+    return true
+  })
 }
 
 export async function getEvents(): Promise<Event[]> {
   if (!supabase) return filterEvents(seedEvents);
+  const today = new Date().toISOString().slice(0, 10)
   const { data, error } = await supabase
     .from('events')
     .select('*')
+    .or(`end_date.is.null,end_date.gte.${today}`)
     .order('start_date', { ascending: true });
   if (error || !data) return filterEvents(seedEvents);
   return interleaveOngoing(filterEvents(data as Event[]));
