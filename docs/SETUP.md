@@ -21,7 +21,26 @@ Supabase.
 
 ### 1.2 Apply the migrations
 
-**Easiest — one command from any computer** (no SQL editor, no copy-paste):
+**Easiest — automatic on deploy** (works entirely from a phone): the build
+runs `db:migrate --if-configured` before `next build`, so any Vercel deploy
+migrates the database when `DATABASE_URL` is set (and skips silently when it
+isn't — demo mode). Setup:
+
+1. In Supabase, copy the **Session pooler** connection string (see below for
+   where to find it) and replace `[YOUR-PASSWORD]` with your database
+   password.
+2. In Vercel: Project → **Settings → Environment Variables** → add
+   `DATABASE_URL` with that value.
+3. **Deployments** → ⋯ menu on the latest deployment → **Redeploy**. The
+   build log shows `applying 001_initial.sql … ✓ … ✓ Fully migrated`.
+
+**Where the connection string lives in Supabase:** project dashboard →
+**Connect** button at the top of the page (or Project Settings → Database →
+Connection string) → choose **Session pooler**. Format:
+`postgresql://postgres.<ref>:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres`.
+Forgot the password? Project Settings → Database → **Reset database password**.
+
+**Manual — one command from any computer** (no SQL editor, no copy-paste):
 
 1. In Supabase: **Project Settings → Database → Connection string** and copy
    the **Session pooler** URI (the direct connection is IPv6-only on some

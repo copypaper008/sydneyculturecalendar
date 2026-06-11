@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=256' next dev",
-    "build": "next build",
+    "build": "tsx scripts/db-migrate.ts --if-configured && next build",
     "start": "next start",
     "lint": "eslint",
     "add-source": "tsx scripts/add-source.ts",

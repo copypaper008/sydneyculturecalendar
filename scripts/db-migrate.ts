@@ -19,6 +19,11 @@ import { Client } from 'pg'
 async function main() {
   const url = process.env.DATABASE_URL
   if (!url) {
+    if (process.argv.includes('--if-configured')) {
+      // Build-time mode: no database configured is a valid state (demo mode)
+      console.log('db:migrate — DATABASE_URL not set, skipping migrations')
+      return
+    }
     console.error('Set DATABASE_URL to your Postgres connection string.')
     console.error('Supabase: Project Settings → Database → Connection string (Session pooler).')
     process.exit(1)
