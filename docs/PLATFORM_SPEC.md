@@ -243,7 +243,57 @@ All seven Sydney adapters are hand-rolled regex scrapers sharing recurring patte
 - **Permanent detection** (Australian Museum, Maritime): "permanent collection/display", `data-value="Permanent"`, permanent topic links → add the `ongoing` tag; a server-rendered dates element (`DatesEl`) is treated as canonical and overrides weaker signals.
 - Caps to bound runtime: 20–40 detail pages per source.
 
-### 8.3 Per-source strategies (city content — replace per city)
+### 8.3 Source discovery pipeline (`npm run add-source`)
+
+New institutions are added URL-first. The pipeline is fully deterministic:
+
+1. **Probe** (`lib/sync/discovery/probe.ts`) — fetches the what's-on URL
+   (browser headers, Googlebot fallback), plus `robots.txt`, sitemap, feed and
+   WordPress-API probes. Detects JSON-LD events, client-rendered (`__NEXT_DATA__`)
+   pages, and groups the listing page's internal links by path prefix to find
+   the event-detail URL pattern. Honours `robots.txt` disallows (no
+   recommendation for disallowed paths). Emits a report + confidence and a
+   draft descriptor.
+2. **Descriptor** (`lib/sync/descriptors.ts`) — a declarative, serialisable
+   description of one source: listing strategy (`listing-links` | `sitemap` |
+   `rss` | `wp-api`), institution/venue/suburb defaults, header preset, type/
+   free overrides. Descriptors are data, not code: safe to execute, reviewable
+   in a PR. They live in `config/sources.ts`.
+3. **Generic adapter** (`lib/sync/generic.ts`) — executes any descriptor:
+   every strategy reduces to "candidate detail URLs", then a shared extraction
+   ladder per page (JSON-LD dates → OpenGraph meta → visible date-range /
+   "closes …" text → time ranges → type/free/ongoing heuristics) built on the
+   shared toolkit (`lib/sync/scrape.ts`).
+4. **Validator** (`lib/sync/discovery/validate.ts`) — quality gate: minimum
+   event count, ISO dates within a sanity window, junk-title detection,
+   absolute URLs, duplicate ids, plus coverage warnings (descriptions, images,
+   end dates). The CLI only saves a descriptor when validation passes.
+
+End-to-end tests run against a synthetic localhost site: `npm run test:discovery`.
+Hand-written adapters remain the escape hatch for sites where dates only exist
+in client-side JSON (see `maritime.ts`).
+
+**Rendered fetches for JS-built sites** — descriptors can set `render: true`
+(the probe sets it automatically when event links only appear after browser
+rendering; force with `add-source --render`). Pages are then loaded through a
+real browser (`lib/sync/browser.ts`, puppeteer-core): a remote CDP endpoint
+via `BROWSER_WS_ENDPOINT` (recommended on Vercel — e.g. Browserless) or a
+local binary via `CHROME_EXECUTABLE_PATH`. One browser instance is shared per
+sync run and closed afterwards; without a configured browser, render-mode
+sources degrade to plain HTTP with a warning.
+
+**Source health & alerting** — `/api/sync` runs each source separately and
+validates its output (`minEvents: 1`). Every run is recorded per source in
+the `sync_runs` table (fetched/inserted/updated/skipped, errors, warnings).
+Alerts are raised when an adapter crashes, output fails validation, or a
+source returns 0 events — escalated to *regression* severity when the
+previous recorded run was healthy (scrapers rot silently; this is the smoke
+detector). Alerts are returned in the sync response, and POSTed to
+`ALERT_WEBHOOK_URL` (Slack/Discord-compatible `{text, content}` payload)
+when configured. The response's `ok` reflects regressions, so Vercel cron
+logging shows unhealthy runs.
+
+### 8.4 Per-source strategies (city content — replace per city)
 | Adapter | Institution | Strategy | Notable rules |
 |---|---|---|---|
 | `mca.ts` | Museum of Contemporary Art | **Undocumented JSON API** (`/api/query-whats-on/`) + per-event page scrape for description | `when`-string parser; label→type map; status→is_free map; skips recurring/various dates |
@@ -274,7 +324,21 @@ Tokens in `globals.css` (`:root`), consumed via inline `style` props:
 - ISR (1h) everywhere; event pages statically enumerated at build.
 - `next.config.ts`: image remote-pattern allowlist for Unsplash only (irrelevant in practice since `next/image` isn't used); explicit manifest Content-Type header; Turbopack root pin.
 
-## 11. What a new city deployment must supply
+## 11. Branching / deployment model
+
+- **`main`** is the platform: city-agnostic code plus a *template*
+  `config/site.ts` whose values are placeholders (`sync.sources` empty, demo
+  mode runs from the bundled sample data).
+- **Each city is a long-lived branch** (e.g. `sydney`) whose only intended
+  difference from `main` is `config/site.ts`. The city's hosting (Vercel
+  project) sets its production branch to the city branch.
+- Platform changes merge `main → city-branch`; because the city diff is a
+  single file, merges only conflict when the `SiteConfig` shape changes.
+- Source adapters are platform code shared by all cities — they live on
+  `main` in `lib/sync/sources/` with a registry; a city's config merely lists
+  which ones run.
+
+## 12. What a new city deployment must supply
 
 > **Implementation status:** the items below are now centralised in
 > [`config/site.ts`](../config/site.ts) (`SiteConfig`). Business rules live in
