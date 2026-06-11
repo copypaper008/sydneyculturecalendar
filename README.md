@@ -27,10 +27,22 @@ merges are conflict-free unless the `SiteConfig` shape changed.
 2. Fill in every `TODO` in [`config/site.ts`](config/site.ts) — city identity
    (locale, IANA timezone), branding copy, theme, institutions, filter pills,
    business rules.
-3. Write one sync adapter per institution feed in `lib/sync/sources/`,
-   register it in `lib/sync/sources/index.ts`, and list its key in
-   `sync.sources`. Adapters are platform code — contribute them via a PR to
-   `main`; only the *enabled list* is per-city.
+3. Add one source per institution feed — usually with one command:
+
+   ```bash
+   npm run add-source -- https://museum.example/whats-on \
+     --institution "Example Museum" --suburb "Suburb" --save
+   ```
+
+   This probes the URL, picks a scraping strategy (event links on the listing
+   page, sitemap, RSS, or WordPress API), extracts the events through the
+   generic adapter, validates the output quality, and on a pass saves a
+   declarative descriptor to `config/sources.ts`. Then list its key in
+   `sync.sources`. Only sites the probe can't handle (fully JS-rendered, no
+   feed/sitemap) need a hand-written adapter in `lib/sync/sources/` — build it
+   on the shared toolkit in `lib/sync/scrape.ts`, register it in
+   `lib/sync/sources/index.ts`. Sources are platform code — contribute them
+   via a PR to `main`; only the *enabled list* is per-city.
 4. Create a Vercel project for the city and set its **production branch** to
    the city branch. Configure env vars (below) and the cron secret.
 
