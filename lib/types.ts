@@ -29,34 +29,13 @@ export interface Event {
   created_at?: string;
 }
 
-export interface Institution {
-  name: string;
-  suburb: string;
-  website: string;
-}
-
-export const EVENT_TYPES: { value: EventType; label: string }[] = [
-  { value: 'exhibition', label: 'Exhibition' },
-  { value: 'festival', label: 'Festival' },
-  { value: 'talk', label: 'Talk' },
-  { value: 'performance', label: 'Performance' },
-  { value: 'open_day', label: 'Open Day' },
-  { value: 'heritage', label: 'Heritage' },
-  { value: 'other', label: 'Other' },
-];
-
-export const INSTITUTIONS = [
-  'Art Gallery of NSW',
-  'Museum of Contemporary Art',
-  'Powerhouse Museum',
-  'Australian National Maritime Museum',
-  'State Library of NSW',
-  'White Rabbit Gallery',
-  'Sydney Living Museums',
-  'Sydney Festival',
-  'Vivid Sydney',
-  'Sydney Writers\' Festival',
-  'Biennale of Sydney',
-  'City of Sydney',
-  'Inner West Council',
+/** Canonical taxonomy order — matches the event_type DB enum. */
+export const EVENT_TYPE_VALUES: EventType[] = [
+  'exhibition',
+  'festival',
+  'talk',
+  'performance',
+  'open_day',
+  'heritage',
+  'other',
 ];

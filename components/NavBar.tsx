@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { siteConfig } from '@/config/site';
 
 const navItems = [
   { href: '/events', label: 'Events' },
@@ -31,7 +32,7 @@ export default function NavBar() {
       backdropFilter: 'blur(14px)',
     }}>
       <Link href="/" style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', fontWeight: 700, color: 'var(--colour-ink)' }}>
-        Sydney Culture
+        {siteConfig.brand.navTitle}
       </Link>
 
       <nav style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>

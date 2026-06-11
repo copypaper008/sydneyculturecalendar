@@ -1,20 +1,35 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import NavBar from '@/components/NavBar';
+import { siteConfig } from '@/config/site';
 
 export const metadata: Metadata = {
-  title: 'Sydney Culture Calendar',
-  description: 'Discover exhibitions, festivals, talks and performances across Sydney',
-  manifest: '/manifest.json',
+  title: siteConfig.brand.siteName,
+  description: siteConfig.brand.description,
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0f766e',
+  themeColor: siteConfig.theme.colours.primary,
 };
+
+// City theme — overrides the --colour-* defaults declared in globals.css
+const themeVars = {
+  '--colour-ink': siteConfig.theme.colours.ink,
+  '--colour-muted': siteConfig.theme.colours.muted,
+  '--colour-line': siteConfig.theme.colours.line,
+  '--colour-surface': siteConfig.theme.colours.surface,
+  '--colour-surface-soft': siteConfig.theme.colours.surfaceSoft,
+  '--colour-primary': siteConfig.theme.colours.primary,
+  '--colour-primary-dark': siteConfig.theme.colours.primaryDark,
+  '--colour-primary-soft': siteConfig.theme.colours.primarySoft,
+  '--colour-accent': siteConfig.theme.colours.accent,
+  '--colour-free': siteConfig.theme.colours.free,
+  '--colour-ticketed': siteConfig.theme.colours.ticketed,
+} as React.CSSProperties;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang={siteConfig.city.lang} style={themeVars}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -37,7 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           color: 'var(--colour-muted)',
           background: 'var(--colour-surface)',
         }}>
-          Sydney Culture Calendar — aggregating cultural events across the city
+          {siteConfig.brand.footerText}
         </footer>
       </body>
     </html>

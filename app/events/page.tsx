@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { getEvents } from '@/lib/supabase';
 import EventList from '@/components/EventList';
 
@@ -13,10 +14,14 @@ export default async function EventsPage() {
           All Events
         </h1>
         <p style={{ color: 'var(--colour-muted)', marginTop: 'var(--space-2)', fontSize: '1rem' }}>
-          Search and filter Sydney&apos;s cultural events.
+          Search and filter cultural events.
         </p>
       </div>
-      <EventList events={events} />
+      {/* Suspense boundary required: EventList reads the URL via useSearchParams
+          on a statically rendered page */}
+      <Suspense>
+        <EventList events={events} />
+      </Suspense>
     </div>
   );
 }

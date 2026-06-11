@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { Event } from './types';
 import { seedEvents } from '@/data/seed';
+import { displayFilter, interleaveOngoing, matchesExclusions } from '@/lib/events/rules';
+import { todayISO } from '@/lib/format';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -10,58 +12,22 @@ export const supabase =
     ? createClient(supabaseUrl, supabaseAnonKey)
     : null;
 
-function interleaveOngoing(events: Event[]): Event[] {
-  const ongoing = events.filter(e => Array.isArray(e.tags) && e.tags.includes('ongoing'))
-  const dated = events.filter(e => !Array.isArray(e.tags) || !e.tags.includes('ongoing'))
-  if (ongoing.length === 0) return dated
-  const result: Event[] = []
-  let oi = 0
-  for (let i = 0; i < dated.length; i++) {
-    result.push(dated[i])
-    // Insert an ongoing event every 3 dated events
-    if ((i + 1) % 3 === 0 && oi < ongoing.length) {
-      result.push(ongoing[oi++])
-    }
-  }
-  // Append any remaining ongoing events
-  while (oi < ongoing.length) result.push(ongoing[oi++])
-  return result
-}
-
-const SCHOOL_RE = /\bschool\b/i
-
-function filterEvents(events: Event[]): Event[] {
-  const today   = new Date().toISOString().slice(0, 10)
-  const cutoff  = new Date(); cutoff.setMonth(cutoff.getMonth() - 18)
-  const cutoffISO = cutoff.toISOString().slice(0, 10)
-
-  return events.filter(e => {
-    if (SCHOOL_RE.test(e.title) || SCHOOL_RE.test(e.description ?? '')) return false
-    // Exclude events with a known past end date
-    if (e.end_date && e.end_date < today) return false
-    // Exclude no-end-date events older than 18 months unless explicitly ongoing (permanent)
-    const isOngoing = Array.isArray(e.tags) && e.tags.includes('ongoing')
-    if (!e.end_date && !isOngoing && e.start_date < cutoffISO) return false
-    return true
-  })
-}
-
 export async function getEvents(): Promise<Event[]> {
-  if (!supabase) return filterEvents(seedEvents);
-  const today = new Date().toISOString().slice(0, 10)
+  if (!supabase) return interleaveOngoing(displayFilter(seedEvents));
+  const today = todayISO();
   const { data, error } = await supabase
     .from('events')
     .select('*')
     .or(`end_date.is.null,end_date.gte.${today}`)
     .order('start_date', { ascending: true });
-  if (error || !data) return filterEvents(seedEvents);
-  return interleaveOngoing(filterEvents(data as Event[]));
+  if (error || !data) return interleaveOngoing(displayFilter(seedEvents));
+  return interleaveOngoing(displayFilter(data as Event[]));
 }
 
 export async function getEventById(id: string): Promise<Event | null> {
   if (!supabase) {
     const e = seedEvents.find((e) => e.id === id) ?? null;
-    return e && !SCHOOL_RE.test(e.title) && !SCHOOL_RE.test(e.description ?? '') ? e : null;
+    return e && !matchesExclusions(e.title, e.description) ? e : null;
   }
   const { data, error } = await supabase
     .from('events')
@@ -70,6 +36,6 @@ export async function getEventById(id: string): Promise<Event | null> {
     .single();
   if (error || !data) return null;
   const e = data as Event;
-  if (SCHOOL_RE.test(e.title) || SCHOOL_RE.test(e.description ?? '')) return null;
+  if (matchesExclusions(e.title, e.description)) return null;
   return e;
 }

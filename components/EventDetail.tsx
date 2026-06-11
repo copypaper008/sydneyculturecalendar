@@ -2,36 +2,14 @@ import Link from 'next/link';
 import { ArrowLeft, ExternalLink, Ticket, CalendarDays } from 'lucide-react';
 import { Event } from '@/lib/types';
 import { toInstitutionSlug } from '@/lib/utils';
+import { formatDate, formatDateRangeLong, formatTime12h, monthNames, todayISO } from '@/lib/format';
+import { isOngoing } from '@/lib/events/rules';
+import { eventTypeColour, eventTypeLabel } from '@/lib/event-types';
 import EventCard from './EventCard';
-
-function formatDateRange(start: string, end?: string): string {
-  const startDate = new Date(start + 'T00:00:00');
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-  if (!end || end === start) return startDate.toLocaleDateString('en-AU', opts);
-  const endDate = new Date(end + 'T00:00:00');
-  return `${startDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' })} – ${endDate.toLocaleDateString('en-AU', opts)}`;
-}
-
-function formatTime(t?: string): string | null {
-  if (!t) return null;
-  const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'pm' : 'am';
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')}${ampm}`;
-}
 
 // ─── Event Gantt bar ─────────────────────────────────────────────────────────
 
-const EVENT_COLOURS: Record<string, string> = {
-  exhibition: '#7c3aed',
-  festival: '#f97316',
-  performance: '#ec4899',
-  talk: '#3b82f6',
-  open_day: '#10b981',
-  heritage: '#d97706',
-  other: '#6b7280',
-};
-
-const MON_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MON_LABELS = monthNames('short');
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -55,9 +33,7 @@ function dayIndex(iso: string): number {
 }
 
 function EventGantt({ event }: { event: Event }) {
-  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
-
-  if (isOngoing) {
+  if (isOngoing(event)) {
     return (
       <section style={{ marginTop: 'var(--space-6)' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', marginBottom: 'var(--space-4)', color: 'var(--colour-ink)' }}>
@@ -93,10 +69,9 @@ function EventGantt({ event }: { event: Event }) {
   const endISO = event.end_date || event.start_date;
   const months = ganttMonths(event.start_date, endISO);
   const totalDays = months.reduce((sum, m) => sum + m.days, 0);
-  const color = EVENT_COLOURS[event.event_type] ?? EVENT_COLOURS.other;
+  const color = eventTypeColour(event.event_type);
 
-  const today = new Date();
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const today = todayISO();
 
   const firstMonth = months[0];
   const lastMonth = months[months.length - 1];
@@ -109,8 +84,8 @@ function EventGantt({ event }: { event: Event }) {
   const barRight = ((dayIndex(endISO) - ganttStartDay + 1) / ganttSpan) * 100;
   const barWidth = Math.max(barRight - barLeft, 0.5);
 
-  const todayInRange = todayISO >= ganttStart && todayISO <= ganttEnd;
-  const todayPct = todayInRange ? ((dayIndex(todayISO) - ganttStartDay) / ganttSpan) * 100 : null;
+  const todayInRange = today >= ganttStart && today <= ganttEnd;
+  const todayPct = todayInRange ? ((dayIndex(today) - ganttStartDay) / ganttSpan) * 100 : null;
 
   const isSingleDay = event.start_date === endISO;
 
@@ -168,9 +143,9 @@ function EventGantt({ event }: { event: Event }) {
             </p>
             {!isSingleDay && (
               <p style={{ margin: '2px 0 0', fontSize: '.67rem', color: 'var(--colour-muted)', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {new Date(event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                {formatDate(event.start_date, { day: 'numeric', month: 'short' })}
                 {' – '}
-                {new Date(endISO + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {formatDate(endISO, { day: 'numeric', month: 'short', year: 'numeric' })}
               </p>
             )}
           </div>
@@ -194,11 +169,11 @@ function EventGantt({ event }: { event: Event }) {
         {/* Date labels */}
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '.78rem', color: 'var(--colour-muted)', fontWeight: 600 }}>
-            {new Date(event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+            {formatDate(event.start_date, { day: 'numeric', month: 'short', year: 'numeric' })}
           </span>
           {!isSingleDay && (
             <span style={{ fontSize: '.78rem', color: 'var(--colour-muted)', fontWeight: 600 }}>
-              {new Date(endISO + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {formatDate(endISO, { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           )}
         </div>
@@ -210,13 +185,13 @@ function EventGantt({ event }: { event: Event }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function EventDetail({ event, relatedEvents }: { event: Event; relatedEvents?: Event[] }) {
-  const startTime = formatTime(event.start_time);
-  const endTime = formatTime(event.end_time);
-  const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
+  const startTime = formatTime12h(event.start_time);
+  const endTime = formatTime12h(event.end_time);
+  const ongoing = isOngoing(event);
 
   const meta = [
     { label: 'Institution', value: event.institution, href: `/institutions/${toInstitutionSlug(event.institution)}` },
-    { label: 'Dates', value: isOngoing ? 'Permanent exhibition' : formatDateRange(event.start_date, event.end_date) },
+    { label: 'Dates', value: ongoing ? 'Permanent exhibition' : formatDateRangeLong(event.start_date, event.end_date) },
     startTime ? { label: 'Time', value: endTime ? `${startTime} – ${endTime}` : startTime } : null,
     event.venue ? { label: 'Venue', value: event.venue } : null,
     event.suburb ? { label: 'Suburb', value: event.suburb } : null,
@@ -252,7 +227,7 @@ export default function EventDetail({ event, relatedEvents }: { event: Event; re
         {/* Left */}
         <div>
           <p style={{ fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--colour-accent)', margin: '0 0 var(--space-3)' }}>
-            {event.event_type.replace('_', ' ')}
+            {eventTypeLabel(event.event_type)}
           </p>
           <h1 style={{
             fontFamily: 'var(--font-display)', fontSize: 'clamp(1.8rem, 4vw, 3rem)',

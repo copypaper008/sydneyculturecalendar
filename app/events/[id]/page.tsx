@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getEventById, getEvents } from '@/lib/supabase';
+import { siteConfig } from '@/config/site';
 import EventDetail from '@/components/EventDetail';
 
 export const revalidate = 3600;
@@ -14,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const event = await getEventById(id);
   if (!event) return { title: 'Event not found' };
   return {
-    title: `${event.title} — Sydney Culture Calendar`,
+    title: `${event.title} — ${siteConfig.brand.siteName}`,
     description: event.description ?? `${event.title} at ${event.institution}`,
   };
 }
@@ -26,7 +27,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
   const related = allEvents
     .filter((e) => e.id !== event.id && e.event_type === event.event_type)
-    .slice(0, 3);
+    .slice(0, siteConfig.rules.relatedCount);
 
   return <EventDetail event={event} relatedEvents={related} />;
 }

@@ -3,35 +3,19 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Calendar, Tag, Lightbulb } from 'lucide-react';
-import { Event, EventType } from '@/lib/types';
+import { Event, EventType, EVENT_TYPE_VALUES } from '@/lib/types';
 import { toInstitutionSlug } from '@/lib/utils';
+import { siteConfig } from '@/config/site';
+import { eventTypeColour, eventTypeLabel } from '@/lib/event-types';
+import { isOngoing } from '@/lib/events/rules';
+import { avatarColour, initials } from '@/lib/avatar';
+import { formatDateRangeLong, formatDate, monthNames, todayISO } from '@/lib/format';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MONTH_LABELS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-const MONTH_NAMES  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_LABELS = monthNames('short').map(m => m.toUpperCase());
 
-const EVENT_COLOURS: Record<EventType, string> = {
-  exhibition:  '#7c3aed',
-  festival:    '#f97316',
-  performance: '#ec4899',
-  talk:        '#3b82f6',
-  open_day:    '#10b981',
-  heritage:    '#d97706',
-  other:       '#6b7280',
-};
-
-const EVENT_LABELS: Record<EventType, string> = {
-  exhibition:  'Exhibition',
-  festival:    'Festival',
-  performance: 'Performance',
-  talk:        'Talk',
-  open_day:    'Open Day',
-  heritage:    'Heritage',
-  other:       'Other',
-};
-
-const ALL_TYPES = Object.keys(EVENT_COLOURS) as EventType[];
+const ALL_TYPES = EVENT_TYPE_VALUES;
 
 const TRACK_H   = 34; // px height of each event bar
 const TRACK_GAP = 6;  // px between stacked bars in one row
@@ -52,16 +36,16 @@ function clampDayOfYear(iso: string, year: number): number {
   return Math.floor((clamp.getTime() - yS.getTime()) / 86_400_000) + 1;
 }
 
-function eventBar(event: Event, year: number, todayISO: string): { left: number; width: number } {
+function eventBar(event: Event, year: number, todayStr: string): { left: number; width: number } {
   const total      = daysInYear(year);
   const start      = clampDayOfYear(event.start_date, year);
-  const isOngoing  = Array.isArray(event.tags) && event.tags.includes('ongoing');
+  const ongoing    = isOngoing(event);
   // Three states:
   //  1. Has end_date → show to that date
   //  2. 'ongoing' tag, no end_date → show to year-end with stripes
   //  3. No end_date, not ongoing → "closing TBA": show from start up to today (currently showing)
   const effectiveEnd = event.end_date
-    ?? (isOngoing ? `${year}-12-31` : (todayISO || event.start_date));
+    ?? (ongoing ? `${year}-12-31` : (todayStr || event.start_date));
   const end    = clampDayOfYear(effectiveEnd, year);
   const left   = (start - 1) / total * 100;
   const width  = Math.max((end - start + 1) / total * 100, 0.8);
@@ -90,16 +74,15 @@ function todayLeft(year: number): number | null {
 }
 
 // Greedy interval scheduling — assigns each event a lane index (0-based)
-function assignLanes(events: Event[], year: number, todayISO: string): { event: Event; lane: number; bar: { left: number; width: number } }[] {
+function assignLanes(events: Event[], year: number, todayStr: string): { event: Event; lane: number; bar: { left: number; width: number } }[] {
   const items = events
-    .map(e => ({ event: e, bar: eventBar(e, year, todayISO) }))
+    .map(e => ({ event: e, bar: eventBar(e, year, todayStr) }))
     .sort((a, b) => a.event.start_date.localeCompare(b.event.start_date));
 
   const laneEnd: string[] = [];
   return items.map(({ event, bar }) => {
-    const isOngoing = Array.isArray(event.tags) && event.tags.includes('ongoing');
     // Use the same effective end as eventBar for accurate lane packing
-    const endISO = event.end_date ?? (isOngoing ? `${year}-12-31` : (todayISO || event.start_date));
+    const endISO = event.end_date ?? (isOngoing(event) ? `${year}-12-31` : (todayStr || event.start_date));
     let lane = laneEnd.findIndex(end => end < event.start_date);
     if (lane === -1) { lane = laneEnd.length; laneEnd.push(endISO); }
     else laneEnd[lane] = endISO;
@@ -107,27 +90,8 @@ function assignLanes(events: Event[], year: number, todayISO: string): { event: 
   });
 }
 
-// Deterministic avatar colour from string
-const AVATAR_PALETTE = ['#7c3aed','#0f766e','#d97706','#dc2626','#2563eb','#0891b2','#65a30d','#c026d3','#0e7490','#be185d'];
-function avatarColour(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
-}
-
-function initials(name: string): string {
-  const words = name.split(/\s+/).filter(w => w.length > 2 && /[A-Z]/.test(w[0]));
-  if (words.length >= 2) return words[0][0] + words[1][0];
-  return name.slice(0, 2).toUpperCase();
-}
-
 function fmtDate(event: Event): string {
-  const s   = new Date(event.start_date + 'T00:00:00');
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-  if (!event.end_date || event.end_date === event.start_date)
-    return s.toLocaleDateString('en-AU', opts);
-  const e = new Date(event.end_date + 'T00:00:00');
-  return `${s.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' })} – ${e.toLocaleDateString('en-AU', opts)}`;
+  return formatDateRangeLong(event.start_date, event.end_date);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -145,14 +109,12 @@ export default function YearCalendar({ events }: { events: Event[] }) {
   const [activeTypes, setActiveTypes]       = useState<Set<EventType>>(new Set(ALL_TYPES));
   const [tooltip, setTooltip]               = useState<Tooltip | null>(null);
   const [todayPct, setTodayPct]             = useState<number | null>(null);
-  const [todayISO, setTodayISO]             = useState('');
+  const [today, setToday]                   = useState('');
   const [expanded, setExpanded]             = useState<Set<string>>(new Set());
 
   // Avoid SSR/client mismatch for date-dependent state
   useEffect(() => {
-    const d   = new Date();
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    setTodayISO(iso);
+    setToday(todayISO());
     setTodayPct(todayLeft(year));
   }, [year]);
 
@@ -160,15 +122,15 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
   // Filter + group by institution
   const yearEvents = useMemo(() => {
-    const curY = todayISO ? parseInt(todayISO.slice(0, 4)) : 0;
-    // 18 months ago — cutoff for "closing TBA" events; older ones are likely closed
-    const cutoffISO = todayISO
-      ? (() => { const d = new Date(todayISO); d.setMonth(d.getMonth() - 18); return d.toISOString().slice(0, 10); })()
+    const curY = today ? parseInt(today.slice(0, 4)) : 0;
+    // Cutoff for "closing TBA" events; older ones are likely closed
+    const cutoffISO = today
+      ? (() => { const d = new Date(today); d.setMonth(d.getMonth() - siteConfig.rules.staleAfterMonths); return d.toISOString().slice(0, 10); })()
       : '';
 
     return events.filter(e => {
-      const sY       = parseInt(e.start_date.slice(0, 4));
-      const isOngoing = Array.isArray(e.tags) && e.tags.includes('ongoing');
+      const sY      = parseInt(e.start_date.slice(0, 4));
+      const ongoing = isOngoing(e);
 
       // ── Year-range gate ──────────────────────────────────────────────────────
       if (sY > year) return false;  // event hasn't started yet in this year
@@ -176,7 +138,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
       if (e.end_date) {
         // Dated events: only show in years the event actually spans
         if (parseInt(e.end_date.slice(0, 4)) < year) return false;
-      } else if (isOngoing) {
+      } else if (ongoing) {
         // Ongoing: show in every year from start year onwards (no gate needed)
       } else {
         // Closing TBA: only meaningful in the current year (or start year if viewing past)
@@ -186,16 +148,16 @@ export default function YearCalendar({ events }: { events: Event[] }) {
       if (!activeTypes.has(e.event_type)) return false;
 
       // ── Current-year recency filter ──────────────────────────────────────────
-      if (todayISO && year === curY) {
-        if (isOngoing) return true;
-        if (e.end_date) return e.end_date >= todayISO;   // hide definitively past events
-        // Closing TBA: hide if started more than 18 months ago (probably already closed)
+      if (today && year === curY) {
+        if (ongoing) return true;
+        if (e.end_date) return e.end_date >= today;   // hide definitively past events
+        // Closing TBA: hide if started more than the staleness cutoff ago
         return cutoffISO ? e.start_date >= cutoffISO : true;
       }
 
       return true;
     });
-  }, [events, year, activeTypes, todayISO]);
+  }, [events, year, activeTypes, today]);
 
   const institutions = useMemo(() => {
     const map = new Map<string, Event[]>();
@@ -228,7 +190,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
             {year} Exhibition Calendar
           </h1>
           <p style={{ color: 'var(--colour-muted)', fontSize: '.95rem', margin: 0, maxWidth: '52ch' }}>
-            See when exhibitions and major cultural events are happening across Sydney&rsquo;s leading institutions.
+            See when exhibitions and major cultural events are happening across {siteConfig.city.name}&rsquo;s leading institutions.
           </p>
         </div>
 
@@ -258,7 +220,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
         {ALL_TYPES.map(type => {
           const on    = activeTypes.has(type);
-          const color = EVENT_COLOURS[type];
+          const color = eventTypeColour(type);
           return (
             <button
               key={type}
@@ -273,7 +235,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
               }}
             >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: on ? color : 'var(--colour-muted)', flexShrink: 0 }} />
-              {EVENT_LABELS[type]}
+              {eventTypeLabel(type)}
             </button>
           );
         })}
@@ -322,7 +284,7 @@ export default function YearCalendar({ events }: { events: Event[] }) {
 
           {/* Institution rows */}
           {institutions.map(([institution, instEvents], rowIdx) => {
-            const lanes         = assignLanes(instEvents, year, todayISO);
+            const lanes         = assignLanes(instEvents, year, today);
             const allLanes      = lanes.reduce((m, t) => Math.max(m, t.lane + 1), 1);
             const isExpanded    = expanded.has(institution);
             const numLanes      = isExpanded ? allLanes : Math.min(allLanes, MAX_LANES);
@@ -400,10 +362,10 @@ export default function YearCalendar({ events }: { events: Event[] }) {
                   {/* Event bars */}
                   {visibleLanes.map(({ event, lane, bar }) => {
                     const top      = ROW_PAD + lane * (TRACK_H + TRACK_GAP);
-                    const color    = EVENT_COLOURS[event.event_type];
+                    const color    = eventTypeColour(event.event_type);
                     const wide     = bar.width > 7;
                     const medium   = bar.width > 3;
-                    const ongoing  = Array.isArray(event.tags) && event.tags.includes('ongoing');
+                    const ongoing  = isOngoing(event);
                     const closingTBA = !event.end_date && !ongoing;
                     // ongoing → diagonal stripes; closing TBA → flat tint, dashed border; dated → flat tint, solid border
                     const barBg    = ongoing
@@ -497,8 +459,8 @@ export default function YearCalendar({ events }: { events: Event[] }) {
             pointerEvents: 'none',
           }}
         >
-          <p style={{ margin: '0 0 5px', fontSize: '.65rem', fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: EVENT_COLOURS[tooltip.event.event_type] }}>
-            {EVENT_LABELS[tooltip.event.event_type]}
+          <p style={{ margin: '0 0 5px', fontSize: '.65rem', fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: eventTypeColour(tooltip.event.event_type) }}>
+            {eventTypeLabel(tooltip.event.event_type)}
           </p>
           <p style={{ margin: '0 0 3px', fontWeight: 700, fontSize: '.9rem', color: 'var(--colour-ink)', lineHeight: 1.3 }}>
             {tooltip.event.title}
@@ -509,10 +471,10 @@ export default function YearCalendar({ events }: { events: Event[] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>
               <Calendar size={12} style={{ flexShrink: 0 }} />
-              {Array.isArray(tooltip.event.tags) && tooltip.event.tags.includes('ongoing')
+              {isOngoing(tooltip.event)
                 ? 'Ongoing'
                 : !tooltip.event.end_date
-                  ? `Opens ${new Date(tooltip.event.start_date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} · Closing date TBA`
+                  ? `Opens ${formatDate(tooltip.event.start_date, { day: 'numeric', month: 'long', year: 'numeric' })} · Closing date TBA`
                   : fmtDate(tooltip.event)}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', color: 'var(--colour-muted)' }}>

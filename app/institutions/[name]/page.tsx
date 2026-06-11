@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getEvents } from '@/lib/supabase';
 import { toInstitutionSlug } from '@/lib/utils';
+import { siteConfig } from '@/config/site';
 import InstitutionView from '@/components/InstitutionView';
 
 export const revalidate = 3600;
@@ -10,7 +11,7 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
   const events = await getEvents();
   const institution = events.find(e => toInstitutionSlug(e.institution) === slug)?.institution ?? slug;
   return {
-    title: `${institution} — Sydney Culture Calendar`,
+    title: `${institution} — ${siteConfig.brand.siteName}`,
     description: `Exhibitions, events and programs at ${institution}.`,
   };
 }

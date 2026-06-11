@@ -1,7 +1,8 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { EVENT_TYPES, INSTITUTIONS } from '@/lib/types';
+import { siteConfig } from '@/config/site';
+import { EVENT_TYPE_OPTIONS } from '@/lib/event-types';
 
 export interface Filters {
   search: string;
@@ -17,13 +18,7 @@ interface FilterBarProps {
   onChange: (filters: Filters) => void;
 }
 
-const POPULAR = [
-  { label: 'Exhibitions', key: 'eventType', value: 'exhibition' },
-  { label: 'Festivals', key: 'eventType', value: 'festival' },
-  { label: 'Talks', key: 'eventType', value: 'talk' },
-  { label: 'Free', key: 'isFree', value: 'free' },
-  { label: 'Performances', key: 'eventType', value: 'performance' },
-];
+const POPULAR = siteConfig.filters.popular;
 
 const selectStyle: React.CSSProperties = {
   height: '38px',
@@ -114,7 +109,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
           style={selectStyle}
         >
           <option value="all">All event types</option>
-          {EVENT_TYPES.map(({ value, label }) => (
+          {EVENT_TYPE_OPTIONS.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
@@ -125,7 +120,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
           style={selectStyle}
         >
           <option value="all">All institutions</option>
-          {INSTITUTIONS.map((name) => (
+          {siteConfig.institutions.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
