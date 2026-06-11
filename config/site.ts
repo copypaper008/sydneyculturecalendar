@@ -1,24 +1,13 @@
 import type { EventType } from '@/lib/types';
 
 /**
- * Per-city site configuration — PLATFORM TEMPLATE.
+ * Per-city site configuration.
  *
- * This file on `main` is a placeholder. Each city deployment lives on its own
- * long-lived branch (e.g. `sydney`) whose only intended difference from main
- * is this file. To launch a new city:
- *
- *   1. Branch from `main` (e.g. `melbourne`).
- *   2. Replace every TODO below with the city's values.
- *   3. Write one sync adapter per institution feed in lib/sync/sources/,
- *      register it in lib/sync/sources/index.ts, and list its key in
- *      `sync.sources` below. (Adapters are platform code — add them via a PR
- *      to main so all cities can share them; only the enabled list is per-city.)
- *   4. Point the city's hosting (e.g. a Vercel project's production branch)
- *      at the new branch.
- *
- * Everything else — pages, components, business-rule engine, sync engine —
- * is platform code and must not hardcode city values. See
- * docs/PLATFORM_SPEC.md for the full contract.
+ * Everything a new city deployment needs to change lives in this file:
+ * branding copy, locale/timezone, institutions, ingestion sources, theme
+ * colours, and the editorial business rules documented in
+ * docs/PLATFORM_SPEC.md §7 and §11. Platform code must not hardcode any of
+ * these values — it reads them from `siteConfig`.
  */
 
 export interface EventTypeMeta {
@@ -126,29 +115,26 @@ export interface SiteConfig {
 
 export const siteConfig: SiteConfig = {
   city: {
-    // TODO: your city
-    name: 'Example City',
-    country: 'Example Country',
-    locale: 'en',
-    timeZone: 'UTC',
+    name: 'Sydney',
+    country: 'Australia',
+    locale: 'en-AU',
+    timeZone: 'Australia/Sydney',
     lang: 'en',
   },
   brand: {
-    // TODO: your branding copy
-    siteName: 'Example City Culture Calendar',
-    navTitle: 'Example Culture',
-    description: 'Discover exhibitions, festivals, talks and performances across the city',
-    footerText: 'Culture Calendar — aggregating cultural events across the city',
+    siteName: 'Sydney Culture Calendar',
+    navTitle: 'Sydney Culture',
+    description: 'Discover exhibitions, festivals, talks and performances across Sydney',
+    footerText: 'Sydney Culture Calendar — aggregating cultural events across the city',
     hero: {
-      eyebrow: 'Example City',
-      title: "Discover what's on in Example City",
+      eyebrow: 'Sydney, Australia',
+      title: "Discover what's on in Sydney",
       subtitle: 'Exhibitions, festivals, talks and performances — all in one place.',
       imageUrl:
         'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&w=1800&q=80',
     },
   },
   theme: {
-    // TODO: optionally re-skin per city; these are the platform defaults
     colours: {
       ink: '#151922',
       muted: '#667085',
@@ -173,15 +159,11 @@ export const siteConfig: SiteConfig = {
     },
   },
   manifest: {
-    // TODO: your PWA identity
-    shortName: 'Culture',
+    shortName: 'SCC',
     startUrl: '/calendar',
     backgroundColor: '#f8fafc',
     categories: ['entertainment', 'lifestyle', 'education'],
   },
-  // TODO: the institutions in your city's filter dropdown. These placeholder
-  // entries match the bundled sample dataset (data/seed.ts) so the
-  // no-database demo mode stays usable on the template.
   institutions: [
     'Art Gallery of NSW',
     'Museum of Contemporary Art',
@@ -189,6 +171,7 @@ export const siteConfig: SiteConfig = {
     'Australian National Maritime Museum',
     'State Library of NSW',
     'White Rabbit Gallery',
+    'Australian Museum',
     'Sydney Living Museums',
     'Sydney Festival',
     'Vivid Sydney',
@@ -198,7 +181,6 @@ export const siteConfig: SiteConfig = {
     'Inner West Council',
   ],
   filters: {
-    // TODO: which quick-filter pills to promote for your audience
     popular: [
       { label: 'Exhibitions', key: 'eventType', value: 'exhibition' },
       { label: 'Festivals', key: 'eventType', value: 'festival' },
@@ -212,7 +194,6 @@ export const siteConfig: SiteConfig = {
     newExhibitionWindowDays: 30,
   },
   rules: {
-    // Platform defaults — adjust per city's editorial policy
     excludePatterns: [/\bschool\b/i],
     staleAfterMonths: 18,
     ongoingTag: 'ongoing',
@@ -222,8 +203,6 @@ export const siteConfig: SiteConfig = {
     relatedCount: 3,
   },
   sync: {
-    // TODO: enable your city's source adapters (see lib/sync/sources/index.ts).
-    // Empty on the template — the demo runs from the bundled sample data.
-    sources: [],
+    sources: ['slnsw', 'mca', 'agnsw', 'powerhouse', 'ausmuseum', 'maritime', 'whiterabbit'],
   },
 };
