@@ -273,6 +273,26 @@ End-to-end tests run against a synthetic localhost site: `npm run test:discovery
 Hand-written adapters remain the escape hatch for sites where dates only exist
 in client-side JSON (see `maritime.ts`).
 
+**Rendered fetches for JS-built sites** — descriptors can set `render: true`
+(the probe sets it automatically when event links only appear after browser
+rendering; force with `add-source --render`). Pages are then loaded through a
+real browser (`lib/sync/browser.ts`, puppeteer-core): a remote CDP endpoint
+via `BROWSER_WS_ENDPOINT` (recommended on Vercel — e.g. Browserless) or a
+local binary via `CHROME_EXECUTABLE_PATH`. One browser instance is shared per
+sync run and closed afterwards; without a configured browser, render-mode
+sources degrade to plain HTTP with a warning.
+
+**Source health & alerting** — `/api/sync` runs each source separately and
+validates its output (`minEvents: 1`). Every run is recorded per source in
+the `sync_runs` table (fetched/inserted/updated/skipped, errors, warnings).
+Alerts are raised when an adapter crashes, output fails validation, or a
+source returns 0 events — escalated to *regression* severity when the
+previous recorded run was healthy (scrapers rot silently; this is the smoke
+detector). Alerts are returned in the sync response, and POSTed to
+`ALERT_WEBHOOK_URL` (Slack/Discord-compatible `{text, content}` payload)
+when configured. The response's `ok` reflects regressions, so Vercel cron
+logging shows unhealthy runs.
+
 ### 8.4 Per-source strategies (city content — replace per city)
 | Adapter | Institution | Strategy | Notable rules |
 |---|---|---|---|

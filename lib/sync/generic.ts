@@ -1,5 +1,6 @@
 import { RawEvent } from './types'
 import { SourceDescriptor } from './descriptors'
+import { renderPage, isBrowserConfigured } from './browser'
 import {
   BROWSER_HEADERS, GOOGLEBOT_HEADERS, fetchWithTimeout,
   absoluteUrl, slugFromUrl, stripTags, decodeEntities, metaContent,
@@ -22,6 +23,27 @@ function headersFor(d: SourceDescriptor): Record<string, string> {
   return d.headers === 'googlebot' ? GOOGLEBOT_HEADERS : BROWSER_HEADERS
 }
 
+/** Fetch a page's HTML — through a real browser when the descriptor asks for it. */
+async function getPageHtml(d: SourceDescriptor, url: string): Promise<string | null> {
+  if (d.render) {
+    if (isBrowserConfigured()) {
+      const html = await renderPage(url)
+      if (html) return html
+      console.error(`[${d.key}] browser render failed for ${url}, falling back to HTTP`)
+    } else {
+      console.warn(`[${d.key}] render requested but no browser configured (set BROWSER_WS_ENDPOINT or CHROME_EXECUTABLE_PATH) — using plain HTTP`)
+    }
+  }
+  try {
+    const res = await fetchWithTimeout(url, headersFor(d))
+    if (!res.ok) { console.log(`[${d.key}] ${url} → ${res.status}`); return null }
+    return await res.text()
+  } catch (err) {
+    console.log(`[${d.key}] ${url} fetch error: ${err}`)
+    return null
+  }
+}
+
 // ── Candidate URL collection ──────────────────────────────────────────────────
 
 function dedupe(urls: string[]): string[] {
@@ -35,9 +57,8 @@ function dedupe(urls: string[]): string[] {
 }
 
 async function urlsFromListingLinks(d: SourceDescriptor, listingUrl: string, linkPattern: string): Promise<string[]> {
-  const res = await fetchWithTimeout(listingUrl, headersFor(d))
-  if (!res.ok) { console.error(`[${d.key}] listing page → ${res.status}`); return [] }
-  const html = await res.text()
+  const html = await getPageHtml(d, listingUrl)
+  if (!html) { console.error(`[${d.key}] listing page unavailable`); return [] }
   const re = new RegExp(`href="([^"]+)"`, 'gi')
   const pattern = new RegExp(linkPattern, 'i')
   const urls: string[] = []
@@ -130,15 +151,8 @@ export async function collectCandidateUrls(d: SourceDescriptor): Promise<string[
 // ── Detail page extraction ────────────────────────────────────────────────────
 
 export async function scrapeDetailPage(d: SourceDescriptor, url: string, today: string): Promise<RawEvent | null> {
-  let html: string
-  try {
-    const res = await fetchWithTimeout(url, headersFor(d))
-    if (!res.ok) { console.log(`[${d.key}] ${url} → ${res.status}`); return null }
-    html = await res.text()
-  } catch (err) {
-    console.log(`[${d.key}] ${url} fetch error: ${err}`)
-    return null
-  }
+  const html = await getPageHtml(d, url)
+  if (!html) return null
 
   // Title: og:title (optionally suffix-stripped) → <h1> → <title>
   let title = metaContent(html, 'og:title') ?? ''

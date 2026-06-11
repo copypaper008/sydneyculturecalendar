@@ -12,6 +12,8 @@
  *   --type exhibition      Fallback event type (default: other)
  *   --pattern "regex"      Override the auto-detected link/include pattern
  *   --max 25               Max detail pages per sync
+ *   --render               Force browser rendering (needs BROWSER_WS_ENDPOINT
+ *                          or CHROME_EXECUTABLE_PATH)
  *   --save                 Append the descriptor to config/sources.ts on pass
  *   --probe-only           Print the probe report and exit
  *
@@ -23,6 +25,7 @@ import { join } from 'node:path'
 import { probe } from '../lib/sync/discovery/probe'
 import { validateRawEvents } from '../lib/sync/discovery/validate'
 import { fetchDescriptorEvents } from '../lib/sync/generic'
+import { closeBrowser } from '../lib/sync/browser'
 import { SourceDescriptor } from '../lib/sync/descriptors'
 
 function arg(name: string): string | undefined {
@@ -45,7 +48,7 @@ async function main() {
   const institution = arg('institution')
 
   console.log(`\n── Probing ${url} …\n`)
-  const report = await probe(url, institution)
+  const report = await probe(url, institution, { forceRender: flag('render') })
 
   console.log(`Fetched with: ${report.fetchedWith ?? 'FAILED'} (status ${report.status})`)
   console.log(`Capabilities:`)
@@ -69,7 +72,7 @@ async function main() {
   for (const note of report.notes) console.log(`  ⚠ ${note}`)
 
   if (!report.recommended || !report.draft) fail('No viable strategy found — see notes above.')
-  console.log(`\nRecommended strategy: ${report.recommended.kind} (confidence: ${report.confidence})`)
+  console.log(`\nRecommended strategy: ${report.recommended.kind} (confidence: ${report.confidence}${report.needsRender ? ', browser-rendered' : ''})`)
 
   if (flag('probe-only')) return
 
@@ -137,4 +140,6 @@ async function main() {
   }
 }
 
-main().catch((err) => fail(String(err?.stack ?? err)))
+main()
+  .then(() => closeBrowser())
+  .catch(async (err) => { await closeBrowser(); fail(String(err?.stack ?? err)) })

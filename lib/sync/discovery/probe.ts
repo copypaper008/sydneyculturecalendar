@@ -1,4 +1,5 @@
 import { SourceDescriptor, ListingStrategy } from '../descriptors'
+import { renderPage, isBrowserConfigured } from '../browser'
 import {
   BROWSER_HEADERS, GOOGLEBOT_HEADERS, fetchWithTimeout,
   absoluteUrl, decodeEntities, extractJsonLd, metaContent,
@@ -47,8 +48,15 @@ export interface ProbeReport {
   } | null
   recommended: ListingStrategy | null
   confidence: 'high' | 'medium' | 'low'
+  /** True when the recommendation only works with browser rendering. */
+  needsRender: boolean
   notes: string[]
   draft: SourceDescriptor | null
+}
+
+export interface ProbeOptions {
+  /** Try browser rendering even if a plain-HTTP strategy was found. */
+  forceRender?: boolean
 }
 
 const EVENT_KEYWORDS = /event|whats-on|what-s-on|whatson|exhibition|program|calendar|show/i
@@ -173,7 +181,7 @@ async function robotsDisallows(baseUrl: string, path: string): Promise<boolean> 
   return false
 }
 
-export async function probe(url: string, institution?: string): Promise<ProbeReport> {
+export async function probe(url: string, institution?: string, opts: ProbeOptions = {}): Promise<ProbeReport> {
   const parsed = new URL(url)
   const baseUrl = `${parsed.protocol}//${parsed.host}`
   const notes: string[] = []
@@ -188,7 +196,7 @@ export async function probe(url: string, institution?: string): Promise<ProbeRep
       robotsDisallowsPath: false,
     },
     linkGroups: [], detailSample: null,
-    recommended: null, confidence: 'low', notes, draft: null,
+    recommended: null, confidence: 'low', needsRender: false, notes, draft: null,
   }
 
   const page = await tryFetch(url)
@@ -242,22 +250,45 @@ export async function probe(url: string, institution?: string): Promise<ProbeRep
 
   // ── Recommendation ──────────────────────────────────────────────────────────
   if (!report.capabilities.robotsDisallowsPath) {
-    if (top && top.count >= 3) {
+    if (top && top.count >= 3 && !opts.forceRender) {
       report.recommended = { kind: 'listing-links', listingUrl: url, linkPattern: top.linkPattern }
       report.confidence = top.keywordHit && (report.detailSample?.hasJsonLdDates || report.detailSample?.hasOgTitle) ? 'high' : 'medium'
-    } else if (sitemap && sitemap.matches >= 3) {
+    } else if (sitemap && sitemap.matches >= 3 && !opts.forceRender) {
       report.recommended = { kind: 'sitemap', sitemapUrl: sitemap.url, includePattern: pathHint.source }
       report.confidence = 'medium'
       notes.push('No usable links found on the listing page (likely JS-rendered) — falling back to the sitemap.')
-    } else if (report.capabilities.rssFeedUrl) {
+    } else if (report.capabilities.rssFeedUrl && !opts.forceRender) {
       report.recommended = { kind: 'rss', feedUrl: report.capabilities.rssFeedUrl }
       report.confidence = 'medium'
-    } else if (report.capabilities.wpApiUrl) {
+    } else if (report.capabilities.wpApiUrl && !opts.forceRender) {
       report.recommended = { kind: 'wp-api', apiUrl: report.capabilities.wpApiUrl }
       report.confidence = 'low'
       notes.push('Only the WordPress posts API was found; posts may not be events. Review the sample output carefully.')
-    } else {
-      notes.push('No strategy detected. The site is likely fully JS-rendered with no feed/sitemap — it needs a bespoke adapter (see lib/sync/sources/maritime.ts for the pattern).')
+    }
+
+    // Rendered fallback for JS-built listings: load the page in a real
+    // browser and look for event links in the post-render DOM.
+    if (!report.recommended || opts.forceRender) {
+      if (isBrowserConfigured()) {
+        const rendered = await renderPage(url)
+        if (rendered) {
+          const renderedGroups = groupLinks(rendered, baseUrl, url)
+          report.linkGroups = renderedGroups
+          const renderedTop = renderedGroups[0]
+          if (renderedTop && renderedTop.count >= 3) {
+            report.recommended = { kind: 'listing-links', listingUrl: url, linkPattern: renderedTop.linkPattern }
+            report.confidence = renderedTop.keywordHit ? 'medium' : 'low'
+            report.needsRender = true
+            notes.push('Event links only appear after browser rendering — the descriptor uses render mode (requires BROWSER_WS_ENDPOINT or CHROME_EXECUTABLE_PATH at sync time).')
+          }
+        }
+      } else if (!report.recommended) {
+        notes.push('No strategy detected over plain HTTP. The site may be JS-rendered: configure a browser (BROWSER_WS_ENDPOINT or CHROME_EXECUTABLE_PATH) and re-run, or write a bespoke adapter (see lib/sync/sources/maritime.ts).')
+      }
+    }
+
+    if (!report.recommended) {
+      notes.push('No strategy detected. The site needs a bespoke adapter (see lib/sync/sources/maritime.ts for the pattern).')
     }
   }
 
@@ -273,6 +304,7 @@ export async function probe(url: string, institution?: string): Promise<ProbeRep
       baseUrl,
       listing: report.recommended,
       ...(page.via === 'googlebot' ? { headers: 'googlebot' as const } : {}),
+      ...(report.needsRender ? { render: true, maxPages: 10 } : {}),
       baseTags: [slug],
     }
   }

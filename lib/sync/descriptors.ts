@@ -59,4 +59,10 @@ export interface SourceDescriptor {
   assumeFree?: boolean
   /** Regex (string) stripped from the end of og:title, e.g. "\\s*\\|\\s*Some Museum$". */
   titleSuffixPattern?: string
+  /**
+   * Fetch pages through a real browser (for JS-rendered sites). Requires
+   * BROWSER_WS_ENDPOINT or CHROME_EXECUTABLE_PATH; falls back to plain HTTP
+   * with a warning when neither is configured. Slower — keep maxPages low.
+   */
+  render?: boolean
 }

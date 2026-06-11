@@ -13,6 +13,8 @@ import { createServer } from 'node:http'
 import { probe } from '../lib/sync/discovery/probe'
 import { validateRawEvents } from '../lib/sync/discovery/validate'
 import { fetchDescriptorEvents } from '../lib/sync/generic'
+import { evaluateSourceHealth, sendAlertWebhook, SourceRun } from '../lib/sync/health'
+import { closeBrowser, isBrowserConfigured } from '../lib/sync/browser'
 import { RawEvent } from '../lib/sync/types'
 
 const thisYear = new Date().getFullYear()
@@ -196,6 +198,70 @@ async function main() {
       check('disallow detected', report.capabilities.robotsDisallowsPath === true)
       check('no strategy recommended', report.recommended === null)
     } finally { srv.close() }
+  }
+
+  // ── Scenario 6: health evaluator + alert webhook ────────────────────────────
+  console.log('\nScenario 6: source health evaluation')
+  {
+    const ok = (fetched: number): SourceRun => ({
+      source: 's', ok: true, fetched,
+      validation: { pass: true, errors: [], warnings: [], stats: { total: fetched, withEndDate: 0, withDescription: 0, withImage: 0, freeCount: 0, typeCounts: {}, dateRange: null } },
+      sync: { inserted: fetched, updated: 0, skipped: 0, errors: [] },
+    })
+    check('healthy source → no alert', evaluateSourceHealth(ok(12), 10) === null)
+    const regression = evaluateSourceHealth(ok(0), 10)
+    check('0 after healthy → regression', regression?.severity === 'regression', JSON.stringify(regression))
+    check('0 with no history → warning', evaluateSourceHealth(ok(0), null)?.severity === 'warning')
+    const crashed = evaluateSourceHealth({ source: 's', ok: false, fetched: 0, validation: null, sync: null, error: 'boom' }, 10)
+    check('adapter crash → regression', crashed?.severity === 'regression' && crashed.message.includes('boom'))
+    const junkRun: SourceRun = { ...ok(5), validation: { pass: false, errors: ['x: bad date'], warnings: [], stats: { total: 5, withEndDate: 0, withDescription: 0, withImage: 0, freeCount: 0, typeCounts: {}, dateRange: null } } }
+    check('validation failure → regression', evaluateSourceHealth(junkRun, 5)?.severity === 'regression')
+
+    // Webhook delivery against a capturing server
+    const received: string[] = []
+    const hook = createServer((req, res) => {
+      let body = ''
+      req.on('data', (c) => { body += c })
+      req.on('end', () => { received.push(body); res.writeHead(200); res.end('ok') })
+    })
+    await new Promise<void>((r) => hook.listen(0, '127.0.0.1', () => r()))
+    const port = (hook.address() as { port: number }).port
+    process.env.ALERT_WEBHOOK_URL = `http://127.0.0.1:${port}/hook`
+    const sent = await sendAlertWebhook([{ source: 'mca', severity: 'regression', message: 'returned 0 events' }], 'Test Calendar')
+    hook.close()
+    delete process.env.ALERT_WEBHOOK_URL
+    check('webhook delivered', sent === true)
+    const payload = received[0] ?? ''
+    check('webhook payload has text + content', payload.includes('"text"') && payload.includes('"content"') && payload.includes('mca'))
+    check('no webhook without env/alerts', (await sendAlertWebhook([], 'X')) === false)
+  }
+
+  // ── Scenario 7: browser-rendered listing (needs a local Chrome) ─────────────
+  console.log('\nScenario 7: JS-rendered listing via headless browser')
+  if (!isBrowserConfigured()) {
+    console.log('  – skipped: set CHROME_EXECUTABLE_PATH (or BROWSER_WS_ENDPOINT) to run')
+  } else {
+    // Listing links exist only after JS runs; no sitemap/feed to fall back on
+    const renderedListing = `<!doctype html><html><head><title>What’s On</title></head><body><div id="root"></div>
+      <script id="__NEXT_DATA__" type="application/json">{}</script>
+      <script>
+        document.getElementById('root').innerHTML =
+          ${JSON.stringify(Object.keys(detailPages).map((p) => `<a href="${p}">e</a>`).join(''))};
+      </script></body></html>`
+    const srv = await serve({ '/whats-on': renderedListing, ...detailPages })
+    try {
+      const plain = await probe(`${srv.base}/whats-on`, 'Fixture Museum')
+      // plain probe may find nothing or only the render fallback — what matters:
+      check('render fallback recommends listing-links', plain.recommended?.kind === 'listing-links', JSON.stringify(plain.recommended))
+      check('descriptor marked render', plain.needsRender === true && plain.draft?.render === true)
+
+      const events = await fetchDescriptorEvents(plain.draft!)
+      check('rendered pipeline extracts all events', events.length === 4, `got ${events.length}`)
+      check('rendered events validate', validateRawEvents(events).pass)
+    } finally {
+      srv.close()
+      await closeBrowser()
+    }
   }
 
   console.log(failures === 0 ? '\nAll discovery tests passed.' : `\n${failures} test(s) FAILED.`)

@@ -53,6 +53,9 @@ merges are conflict-free unless the `SiteConfig` shape changed.
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public read access. If unset, the site runs in demo mode from the bundled sample dataset (`data/seed.ts`, badged "Sample"). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Write key used by the sync engine. |
 | `SYNC_SECRET` | Bearer token guarding `/api/sync`. On Vercel set `CRON_SECRET` to the same value. |
+| `ALERT_WEBHOOK_URL` | Optional. Slack/Discord-compatible incoming webhook; the sync posts an alert when a source regresses (returns 0 events after being healthy, crashes, or fails validation). Run history is kept in the `sync_runs` table. |
+| `BROWSER_WS_ENDPOINT` | Optional. Remote CDP websocket (e.g. a Browserless instance) used for `render: true` sources — JS-rendered sites scraped through a real browser. Recommended over a local binary on Vercel. |
+| `CHROME_EXECUTABLE_PATH` | Optional. Local Chrome/Chromium binary for `render: true` sources (local dev). |
 
 Database schema and bootstrap data: `supabase/migrations/`.
 
