@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchSLNSWEvents } from '@/lib/sync/sources/slnsw'
-import { fetchMCAEvents } from '@/lib/sync/sources/mca'
-import { fetchAGNSWEvents } from '@/lib/sync/sources/agnsw'
-import { fetchPowerhouseEvents } from '@/lib/sync/sources/powerhouse'
-import { fetchAustralianMuseumEvents } from '@/lib/sync/sources/ausmuseum'
-import { fetchMaritimeEvents } from '@/lib/sync/sources/maritime'
-import { fetchWhiteRabbitEvents } from '@/lib/sync/sources/whiterabbit'
+import { siteConfig } from '@/config/site'
+import { sourceRegistry } from '@/lib/sync/sources'
 import { syncEvents } from '@/lib/sync/engine'
 
 function isAuthorized(request: NextRequest): boolean {
@@ -18,20 +13,22 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 async function runSync() {
-  const [slnswEvents, mcaEvents, agnswEvents, powerhouseEvents, ausmuseumEvents, maritimeEvents, whiteRabbitEvents] = await Promise.all([
-    fetchSLNSWEvents(),
-    fetchMCAEvents(),
-    fetchAGNSWEvents(),
-    fetchPowerhouseEvents(),
-    fetchAustralianMuseumEvents(),
-    fetchMaritimeEvents(),
-    fetchWhiteRabbitEvents(),
-  ])
-  const result = await syncEvents([
-    ...slnswEvents, ...mcaEvents, ...agnswEvents,
-    ...powerhouseEvents, ...ausmuseumEvents, ...maritimeEvents, ...whiteRabbitEvents,
-  ])
-  return result
+  const enabled = siteConfig.sync.sources.filter((key) => {
+    if (sourceRegistry[key]) return true
+    console.error(`[sync] Unknown source "${key}" in siteConfig.sync.sources — skipping`)
+    return false
+  })
+
+  // Adapters are fail-soft (they return [] on error), but guard anyway so one
+  // rejected promise can't abort the whole run.
+  const results = await Promise.allSettled(enabled.map((key) => sourceRegistry[key]()))
+  const rawEvents = results.flatMap((r, i) => {
+    if (r.status === 'fulfilled') return r.value
+    console.error(`[sync] Source "${enabled[i]}" failed:`, r.reason)
+    return []
+  })
+
+  return syncEvents(rawEvents)
 }
 
 // GET — used by Vercel cron (sends Authorization: Bearer ${CRON_SECRET})

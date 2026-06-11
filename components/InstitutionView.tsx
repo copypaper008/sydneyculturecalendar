@@ -3,22 +3,9 @@
 import { useState, useMemo } from 'react';
 import { LayoutGrid, GanttChartSquare } from 'lucide-react';
 import { Event } from '@/lib/types';
+import { avatarColour, initials } from '@/lib/avatar';
 import EventCard from './EventCard';
 import YearCalendar from './YearCalendar';
-
-// Avatar colour — must match YearCalendar's palette so the colour is consistent
-const AVATAR_PALETTE = ['#7c3aed','#0f766e','#d97706','#dc2626','#2563eb','#0891b2','#65a30d','#c026d3','#0e7490','#be185d'];
-function avatarColour(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
-}
-
-function initials(name: string): string {
-  const words = name.split(/\s+/).filter(w => w.length > 2 && /[A-Z]/.test(w[0]));
-  if (words.length >= 2) return words[0][0] + words[1][0];
-  return name.slice(0, 2).toUpperCase();
-}
 
 type View = 'list' | 'year';
 

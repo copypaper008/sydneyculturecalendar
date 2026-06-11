@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { RawEvent } from './types'
+import { admitRawEvent } from '@/lib/events/rules'
+import { todayISO } from '@/lib/format'
 
 export interface SyncResult {
   inserted: number
@@ -17,22 +19,16 @@ function getSupabaseAdmin() {
 
 export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
   const supabase = getSupabaseAdmin()
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayISO()
 
   const result: SyncResult = { inserted: 0, updated: 0, skipped: 0, errors: [] }
 
   for (const raw of rawEvents) {
-    // Skip school-targeted events
-    if (/\bschool\b/i.test(raw.title) || /\bschool\b/i.test(raw.description ?? '')) { result.skipped++; continue }
-    // Skip if definitively past: end_date set and past
-    if (raw.end_date && raw.end_date < today) { result.skipped++; continue }
-    // Skip one-off past events (no end_date, not an exhibition or festival, start_date past)
-    // Festivals (e.g. Vivid) can start before today and still be running — don't drop them
-    if (!raw.end_date && raw.event_type !== 'exhibition' && raw.event_type !== 'festival' && raw.start_date < today) { result.skipped++; continue }
-    // Skip invalid date ranges (would violate DB constraint)
-    if (raw.end_date && raw.start_date && raw.end_date < raw.start_date) {
-      result.errors.push(`Skipping ${raw.source_id}: end_date ${raw.end_date} is before start_date ${raw.start_date}`)
-      result.skipped++; continue
+    const admission = admitRawEvent(raw, today)
+    if (!admission.admit) {
+      if (admission.isError) result.errors.push(`Skipping ${raw.source_id}: ${admission.reason}`)
+      result.skipped++
+      continue
     }
 
     // Check if the event already exists
@@ -81,6 +77,8 @@ export async function syncEvents(rawEvents: RawEvent[]): Promise<SyncResult> {
           end_time: payload.end_time,
           venue: payload.venue,
           image_url: payload.image_url,
+          event_url: payload.event_url,
+          ticket_url: payload.ticket_url,
           is_free: payload.is_free,
           tags: payload.tags,
         })

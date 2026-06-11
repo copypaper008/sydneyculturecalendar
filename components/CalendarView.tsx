@@ -3,10 +3,12 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { Event, EVENT_TYPES } from '@/lib/types';
+import { Event } from '@/lib/types';
+import { EVENT_TYPE_OPTIONS } from '@/lib/event-types';
+import { formatDate, monthNames, weekdayNames, todayISO } from '@/lib/format';
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = monthNames('long');
+const DAYS = weekdayNames('short');
 
 function isoDate(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -18,17 +20,17 @@ function eventActiveOn(event: Event, dateStr: string): boolean {
 }
 
 export default function CalendarView({ events }: { events: Event[] }) {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  // "Today" in the configured city timezone, not the visitor's
+  const todayStr = todayISO();
+  const [todayYear, todayMonth] = [parseInt(todayStr.slice(0, 4)), parseInt(todayStr.slice(5, 7)) - 1];
+  const [year, setYear] = useState(todayYear);
+  const [month, setMonth] = useState(todayMonth);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
-  const todayStr = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
-
   const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); setSelectedDay(null); };
   const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); setSelectedDay(null); };
-  const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(null); };
+  const goToday = () => { setYear(todayYear); setMonth(todayMonth); setSelectedDay(null); };
 
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -90,7 +92,7 @@ export default function CalendarView({ events }: { events: Event[] }) {
           >
             All
           </button>
-          {EVENT_TYPES.map(({ value, label }) => (
+          {EVENT_TYPE_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setTypeFilter(typeFilter === value ? 'all' : value)}
@@ -202,7 +204,7 @@ export default function CalendarView({ events }: { events: Event[] }) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
             <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: 'var(--colour-ink)' }}>
-              {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {formatDate(selectedDay, { weekday: 'long', day: 'numeric', month: 'long' })}
             </h3>
             <button onClick={() => setSelectedDay(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--colour-muted)' }}>
               <X size={16} />

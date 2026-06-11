@@ -2,14 +2,9 @@
 
 import Link from 'next/link';
 import { Event } from '@/lib/types';
-
-function formatDateRange(start: string, end?: string): string {
-  const startDate = new Date(start + 'T00:00:00');
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-  if (!end || end === start) return startDate.toLocaleDateString('en-AU', opts);
-  const endDate = new Date(end + 'T00:00:00');
-  return `${startDate.toLocaleDateString('en-AU', opts)} – ${endDate.toLocaleDateString('en-AU', { ...opts, year: 'numeric' })}`;
-}
+import { formatDateRangeShort } from '@/lib/format';
+import { isOngoing } from '@/lib/events/rules';
+import { eventTypeLabel } from '@/lib/event-types';
 
 export default function EventCard({ event }: { event: Event }) {
   return (
@@ -49,7 +44,7 @@ export default function EventCard({ event }: { event: Event }) {
               fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em',
               textTransform: 'uppercase', color: 'var(--colour-accent)',
             }}>
-              {event.event_type.replace('_', ' ')}
+              {eventTypeLabel(event.event_type)}
             </span>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
               {event.source && event.source !== 'manual' && (
@@ -107,7 +102,7 @@ export default function EventCard({ event }: { event: Event }) {
           <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '.25rem' }}>
             <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>{event.institution}</span>
             <span style={{ fontSize: '.85rem', color: 'var(--colour-muted)' }}>
-              {Array.isArray(event.tags) && event.tags.includes('ongoing') ? 'Ongoing' : formatDateRange(event.start_date, event.end_date)}
+              {isOngoing(event) ? 'Ongoing' : formatDateRangeShort(event.start_date, event.end_date)}
               {event.suburb && ` · ${event.suburb}`}
             </span>
           </div>

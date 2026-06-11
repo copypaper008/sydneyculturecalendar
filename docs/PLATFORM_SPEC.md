@@ -276,6 +276,16 @@ Tokens in `globals.css` (`:root`), consumed via inline `style` props:
 
 ## 11. What a new city deployment must supply
 
+> **Implementation status:** the items below are now centralised in
+> [`config/site.ts`](../config/site.ts) (`SiteConfig`). Business rules live in
+> [`lib/events/rules.ts`](../lib/events/rules.ts) parameterised by that config;
+> locale/timezone-aware formatting in [`lib/format.ts`](../lib/format.ts);
+> event-type labels/colours in [`lib/event-types.ts`](../lib/event-types.ts);
+> the source adapter registry in [`lib/sync/sources/index.ts`](../lib/sync/sources/index.ts).
+> Theme colours are injected as CSS custom properties by the root layout, and the
+> PWA manifest is generated from config (`app/manifest.ts`). A new city edits
+> `config/site.ts` and registers its source adapters; no platform code changes.
+
 **Content & configuration:**
 1. City name, branding copy (nav brand, hero eyebrow/headline/sub, footer line, site metadata, manifest), hero photo, theme colours.
 2. Institution list (for the filter dropdown) — ideally promoted from a hardcoded constant to DB-driven.
@@ -292,12 +302,13 @@ Tokens in `globals.css` (`:root`), consumed via inline `style` props:
 - "Popular" quick-filter pill set; event-type taxonomy and colours (the 7-value DB enum makes the taxonomy semi-rigid — adding a type is a migration).
 - Featured-events selection (currently just feed order — first 3).
 
-**Known defects to fix in the rebuild** (documented so they aren't ported):
-1. `/events` ignores URL query params (`q`, `type`, `free`) that NavBar and homepage links emit.
-2. "Free This Week" / "New Exhibitions" counts have no date window.
-3. Date-range filter compares start_date only (excludes already-running events).
-4. Month calendar shows no-end-date multi-day events on their start day only (inconsistent with year view's closing-TBA treatment).
-5. Manifest theme colour mismatch; missing PWA icons.
-6. Duplicated constants (type colours, avatar palette/hash, entity decoding, date parsing) across components/adapters.
-7. Full-text `search_vector` infrastructure exists but search is client-side substring matching; fine at ~100 events, won't scale.
-8. Sync upsert never deletes or expires events removed at the source, and doesn't update `event_url`/`ticket_url` on existing rows.
+**Known defects** (status as of the configuration-extraction pass):
+1. ~~`/events` ignores URL query params (`q`, `type`, `free`) that NavBar and homepage links emit.~~ **Fixed** — `EventList` seeds its filters from `?q`, `?type`, `?institution`, `?free`, `?from`, `?to` (client-side via `useSearchParams` behind a Suspense boundary, so the page stays ISR-cached).
+2. ~~"Free This Week" / "New Exhibitions" counts have no date window.~~ **Fixed** — windows are configurable (`discovery.freeWindowDays`, `discovery.newExhibitionWindowDays`); "This Weekend" now links with `?from/?to` set.
+3. ~~Date-range filter compares start_date only (excludes already-running events).~~ **Fixed** — range filter uses overlap semantics.
+4. Month calendar shows no-end-date multi-day events on their start day only (inconsistent with year view's closing-TBA treatment). *Open — needs a product decision.*
+5. ~~Manifest theme colour mismatch~~ **Fixed** — manifest is generated from config (`app/manifest.ts`); PWA icon files still missing.
+6. ~~Duplicated constants (type colours, avatar palette/hash) across components~~ **Fixed** for components (`lib/event-types.ts`, `lib/avatar.ts`, `lib/format.ts`); entity-decoding/date-parsing duplication across sync adapters remains *open* (extract a shared scraping toolkit when building the next city's adapters).
+7. Full-text `search_vector` infrastructure exists but search is client-side substring matching; fine at ~100 events, won't scale. *Open.*
+8. ~~Sync upsert doesn't update `event_url`/`ticket_url` on existing rows~~ **Fixed**; sync still never deletes events removed at the source (they expire via end_date) — *open by design, revisit*.
+9. Date formatting/timezone: ~~hardcoded `en-AU` and server-local "today"~~ **Fixed** — all formatting flows through `lib/format.ts` using the configured locale, and "today" is computed in the configured city timezone.

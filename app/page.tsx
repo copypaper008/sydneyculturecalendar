@@ -1,32 +1,38 @@
 import Link from 'next/link';
 import { getEvents } from '@/lib/supabase';
-import { EVENT_TYPES } from '@/lib/types';
+import { siteConfig } from '@/config/site';
+import { EVENT_TYPE_OPTIONS } from '@/lib/event-types';
+import { eventActiveInRange } from '@/lib/events/rules';
+import { addDaysISO, todayISO } from '@/lib/format';
 import EventCard from '@/components/EventCard';
 
 export const revalidate = 3600;
 
+/** Upcoming Saturday and Sunday (today counts if it is one). */
+function weekendRange(today: string): [string, string] {
+  const dow = new Date(today + 'T00:00:00Z').getUTCDay();
+  const sat = addDaysISO(today, (6 - dow) % 7);
+  return [sat, addDaysISO(sat, 1)];
+}
+
 export default async function Home() {
   const events = await getEvents();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
+  const [sat, sun] = weekendRange(today);
+  const { freeWindowDays, newExhibitionWindowDays } = siteConfig.discovery;
 
-  const weekend = (() => {
-    const d = new Date();
-    const day = d.getDay();
-    const sat = new Date(d); sat.setDate(d.getDate() + (6 - day));
-    const sun = new Date(sat); sun.setDate(sat.getDate() + 1);
-    return [sat.toISOString().split('T')[0], sun.toISOString().split('T')[0]];
-  })();
-
-  const todayEvents = events.filter(e =>
-    e.start_date <= today && (!e.end_date || e.end_date >= today)
+  const todayEvents = events.filter(e => eventActiveInRange(e, today, today));
+  const weekendEvents = events.filter(e => eventActiveInRange(e, sat, sun));
+  const freeEvents = events.filter(e =>
+    e.is_free && eventActiveInRange(e, today, addDaysISO(today, freeWindowDays))
   );
-  const weekendEvents = events.filter(e =>
-    weekend.some(d => e.start_date <= d && (!e.end_date || e.end_date >= d))
+  const newExhibitions = events.filter(e =>
+    e.event_type === 'exhibition' &&
+    e.start_date >= addDaysISO(today, -newExhibitionWindowDays) &&
+    e.start_date <= addDaysISO(today, newExhibitionWindowDays)
   );
-  const freeEvents = events.filter(e => e.is_free);
-  const exhibitions = events.filter(e => e.event_type === 'exhibition');
 
-  const featured = events.slice(0, 3);
+  const featured = events.slice(0, siteConfig.rules.featuredCount);
 
   return (
     <div>
@@ -39,7 +45,7 @@ export default async function Home() {
         marginInline: 'calc(var(--space-4) * -1)',
         padding: 'var(--space-6) max(var(--space-6), 5vw)',
         background: `linear-gradient(90deg, rgb(255 253 248 / 95%) 40%, rgb(255 253 248 / 20%)),
-          url("https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?auto=format&fit=crop&w=1800&q=80")`,
+          url("${siteConfig.brand.hero.imageUrl}")`,
         backgroundPosition: 'center right',
         backgroundSize: 'cover',
         border: '1px solid var(--colour-line)',
@@ -48,13 +54,13 @@ export default async function Home() {
       }}>
         <div style={{ maxWidth: '530px' }}>
           <p style={{ color: 'var(--colour-primary)', fontSize: '.72rem', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', margin: 0 }}>
-            Sydney, Australia
+            {siteConfig.brand.hero.eyebrow}
           </p>
           <h1 style={{ fontSize: 'clamp(2.6rem, 6vw, 4.5rem)', fontFamily: 'var(--font-display)', letterSpacing: '-.03em', marginBlock: 'var(--space-3)', color: 'var(--colour-ink)' }}>
-            Discover what&apos;s on in Sydney
+            {siteConfig.brand.hero.title}
           </h1>
           <p style={{ color: 'var(--colour-muted)', fontSize: '1.05rem', marginBottom: 'var(--space-4)' }}>
-            Exhibitions, festivals, talks and performances — all in one place.
+            {siteConfig.brand.hero.subtitle}
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <Link href="/events" style={{
@@ -80,10 +86,10 @@ export default async function Home() {
       <div style={{ marginTop: 'var(--space-7)' }}>
         <div className="discovery-grid">
           {[
-            { label: 'Today in Sydney', count: todayEvents.length, href: '/events' },
-            { label: 'This Weekend', count: weekendEvents.length, href: '/events' },
+            { label: `Today in ${siteConfig.city.name}`, count: todayEvents.length, href: '/events' },
+            { label: 'This Weekend', count: weekendEvents.length, href: `/events?from=${sat}&to=${sun}` },
             { label: 'Free This Week', count: freeEvents.length, href: '/events?free=true' },
-            { label: 'New Exhibitions', count: exhibitions.length, href: '/events?type=exhibition' },
+            { label: 'New Exhibitions', count: newExhibitions.length, href: '/events?type=exhibition' },
           ].map(({ label, count, href }) => (
             <Link key={label} href={href} style={{
               padding: 'var(--space-4)',
@@ -132,7 +138,7 @@ export default async function Home() {
           Browse by type
         </h2>
         <div className="discovery-grid">
-          {EVENT_TYPES.map(({ value, label }) => {
+          {EVENT_TYPE_OPTIONS.map(({ value, label }) => {
             const count = events.filter(e => e.event_type === value).length;
             if (!count) return null;
             return (
