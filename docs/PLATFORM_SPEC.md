@@ -274,7 +274,21 @@ Tokens in `globals.css` (`:root`), consumed via inline `style` props:
 - ISR (1h) everywhere; event pages statically enumerated at build.
 - `next.config.ts`: image remote-pattern allowlist for Unsplash only (irrelevant in practice since `next/image` isn't used); explicit manifest Content-Type header; Turbopack root pin.
 
-## 11. What a new city deployment must supply
+## 11. Branching / deployment model
+
+- **`main`** is the platform: city-agnostic code plus a *template*
+  `config/site.ts` whose values are placeholders (`sync.sources` empty, demo
+  mode runs from the bundled sample data).
+- **Each city is a long-lived branch** (e.g. `sydney`) whose only intended
+  difference from `main` is `config/site.ts`. The city's hosting (Vercel
+  project) sets its production branch to the city branch.
+- Platform changes merge `main → city-branch`; because the city diff is a
+  single file, merges only conflict when the `SiteConfig` shape changes.
+- Source adapters are platform code shared by all cities — they live on
+  `main` in `lib/sync/sources/` with a registry; a city's config merely lists
+  which ones run.
+
+## 12. What a new city deployment must supply
 
 > **Implementation status:** the items below are now centralised in
 > [`config/site.ts`](../config/site.ts) (`SiteConfig`). Business rules live in
