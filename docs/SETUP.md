@@ -33,6 +33,26 @@ file, one at a time, in this order:
 
 Already have the project from before? You only need to run **004**.
 
+> **All four migrations are idempotent** — re-running any of them is safe.
+> 001 tolerates pre-existing objects, 002 only seeds when the `events` table
+> is empty (never duplicates), 003/004 use `if not exists` throughout.
+>
+> **Troubleshooting — `ERROR: 42710: type "event_type" already exists`:**
+> you're running a pre-idempotency copy of `001_initial.sql` against a
+> project where it already (fully or partially) ran. Re-copy the current
+> file from the repo and run it again — it now recovers cleanly from any
+> partial state. To check where you stand at any point:
+>
+> ```sql
+> select
+>   exists (select 1 from pg_type where typname = 'event_type')                                          as enum_ok,
+>   exists (select 1 from information_schema.tables  where table_name = 'events')                        as events_ok,
+>   exists (select 1 from information_schema.columns where table_name = 'events'
+>           and column_name = 'source')                                                                  as source_tracking_ok,
+>   exists (select 1 from information_schema.tables  where table_name = 'sync_runs')                     as health_ok,
+>   (select count(*) from events)                                                                        as event_count;
+> ```
+
 CLI alternative (instead of the SQL editor):
 
 ```bash

@@ -1,3 +1,12 @@
+-- Sample/demo events (idempotent — inserts only when the events table is empty,
+-- so re-running never duplicates rows)
+do $$
+begin
+  if exists (select 1 from events limit 1) then
+    raise notice 'events table not empty - skipping seed';
+    return;
+  end if;
+
 insert into events (title, institution, event_type, start_date, end_date, start_time, end_time, venue, suburb, description, image_url, event_url, ticket_url, is_free, tags) values
 
 ('Archibald Prize 2026', 'Art Gallery of NSW', 'exhibition', '2026-06-05', '2026-08-30', null, null, 'Art Gallery of New South Wales', 'The Domain', 'Australia''s most celebrated and controversial portrait prize returns for 2026. This year''s Archibald Prize showcases works by leading Australian artists competing for the coveted prize. Explore portraits of notable Australians spanning politics, sport, the arts and beyond.', 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&q=80', 'https://www.artgallery.nsw.gov.au', null, true, array['portrait','painting','Australian art','prize']),
@@ -65,3 +74,4 @@ insert into events (title, institution, event_type, start_date, end_date, start_
 ('Sydney Festival: Neon Reef — Immersive Light Installation', 'Sydney Festival', 'festival', '2026-07-03', '2026-07-27', '18:00', '23:00', 'Darling Harbour', 'Darling Harbour', 'Plunge beneath the surface in this spectacular free outdoor installation transforming Darling Harbour into a bioluminescent reef. A collaboration between Sydney-based designer Brigid Costello and marine biologists from the University of Sydney.', 'https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?w=800&q=80', 'https://www.sydneyfestival.org.au', null, true, array['light installation','Darling Harbour','free','outdoor','ocean']),
 
 ('AGNSW: Architecture of Empire — Photography Exhibition', 'Art Gallery of NSW', 'exhibition', '2026-08-01', '2026-11-08', null, null, 'Art Gallery of New South Wales — Brett Whiteley Studio', 'Surry Hills', 'An expansive photographic survey of British colonial architecture across South Asia, Africa and the Pacific. Through 200 photographs spanning 1860–1970, this exhibition interrogates the visual grammar of empire and its contested legacies.', 'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=800&q=80', 'https://www.artgallery.nsw.gov.au', null, true, array['photography','architecture','colonial history','Surry Hills']);
+end $$;
