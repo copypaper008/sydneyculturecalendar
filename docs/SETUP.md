@@ -19,10 +19,27 @@ Supabase.
    region closest to the city (Sydney → `ap-southeast-2`). The free tier is
    fine for a demo.
 
-### 1.2 Apply the migrations — in order
+### 1.2 Apply the migrations
 
-Open **SQL Editor** in the Supabase dashboard and run the contents of each
-file, one at a time, in this order:
+**Easiest — one command from any computer** (no SQL editor, no copy-paste):
+
+1. In Supabase: **Project Settings → Database → Connection string** and copy
+   the **Session pooler** URI (the direct connection is IPv6-only on some
+   plans). It embeds your database password — treat it as a secret.
+2. In a checkout of this repo:
+
+   ```bash
+   npm install
+   DATABASE_URL="postgresql://postgres.<ref>:<password>@…pooler.supabase.com:5432/postgres" \
+     npm run db:migrate
+   ```
+
+   It applies every file in `supabase/migrations/` in order and prints a
+   state check at the end (`✓ Fully migrated`). Safe to run repeatedly.
+
+**Manual alternative — SQL editor** (desktop browser recommended; the editor
+is unreliable on phones): open **SQL Editor** in the Supabase dashboard and
+run the contents of each file, one at a time, in this order:
 
 | # | File | What it does | Required? |
 |---|---|---|---|
