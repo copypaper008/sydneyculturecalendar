@@ -1,13 +1,16 @@
--- Event type enum
-create type event_type as enum (
-  'exhibition',
-  'festival',
-  'talk',
-  'performance',
-  'open_day',
-  'heritage',
-  'other'
-);
+-- Event type enum (idempotent — safe to re-run)
+do $$ begin
+  create type event_type as enum (
+    'exhibition',
+    'festival',
+    'talk',
+    'performance',
+    'open_day',
+    'heritage',
+    'other'
+  );
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
@@ -35,18 +38,19 @@ create table if not exists events (
 -- Row Level Security (public read, no anonymous writes)
 alter table events enable row level security;
 
+drop policy if exists "Allow public read access" on events;
 create policy "Allow public read access"
   on events for select
   using (true);
 
 -- Indexes
-create index events_start_date_idx on events (start_date);
-create index events_end_date_idx on events (end_date);
-create index events_institution_idx on events (institution);
-create index events_event_type_idx on events (event_type);
-create index events_is_free_idx on events (is_free);
-create index events_suburb_idx on events (suburb);
-create index events_search_idx on events using gin (search_vector);
+create index if not exists events_start_date_idx on events (start_date);
+create index if not exists events_end_date_idx on events (end_date);
+create index if not exists events_institution_idx on events (institution);
+create index if not exists events_event_type_idx on events (event_type);
+create index if not exists events_is_free_idx on events (is_free);
+create index if not exists events_suburb_idx on events (suburb);
+create index if not exists events_search_idx on events using gin (search_vector);
 
 -- Trigger to keep search_vector up to date
 create or replace function events_search_vector_update() returns trigger as $$
@@ -64,6 +68,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists events_search_vector_trigger on events;
 create trigger events_search_vector_trigger
   before insert or update on events
   for each row execute function events_search_vector_update();
