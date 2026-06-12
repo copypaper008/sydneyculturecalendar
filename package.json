@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=256' next dev",
-    "build": "next build",
+    "build": "tsx scripts/db-migrate.ts --if-configured && next build",
     "start": "next start",
     "lint": "eslint",
     "add-source": "tsx scripts/add-source.ts",
-    "test:discovery": "tsx scripts/test-discovery.ts"
+    "test:discovery": "tsx scripts/test-discovery.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.6",
@@ -27,10 +28,12 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "pg": "^8.21.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5"
