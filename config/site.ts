@@ -1,7 +1,10 @@
 import type { EventType } from '@/lib/types';
 
 /**
- * Per-city site configuration.
+ * Per-city site configuration — SYDNEY deployment branch.
+ *
+ * This file is the only intended difference between this branch and main.
+ * Platform changes arrive by merging main into this branch.
  *
  * Everything a new city deployment needs to change lives in this file:
  * branding copy, locale/timezone, institutions, ingestion sources, theme
